@@ -134,6 +134,8 @@ import cn.qztc.timetable.feature.timetable.CampusAliasSettingsScreen
 import cn.qztc.timetable.feature.timetable.CampusRouteScreen
 import cn.qztc.timetable.qnu.QnuCredentialStore
 import cn.qztc.timetable.qnu.QnuImportScreen
+import cn.qztc.timetable.education.StudyScreen
+import cn.qztc.timetable.education.AcademicPortalScreen
 import cn.qztc.timetable.qnu.QnuSemesterFactory
 import cn.qztc.timetable.reminder.CourseReminderScheduler
 import cn.qztc.timetable.widget.TodayWidgetProvider
@@ -144,6 +146,9 @@ import cn.qztc.timetable.snapshot.SnapshotStore
 import cn.qztc.timetable.sync.QnuSyncScheduler
 import cn.qztc.timetable.sync.UpcomingChangesDialog
 import cn.qztc.timetable.update.AppUpdateClient
+import cn.qztc.timetable.announcement.AnnouncementStore
+import cn.qztc.timetable.announcement.AnnouncementScreen
+import cn.qztc.timetable.announcement.ImportantAnnouncementDialog
 import cn.qztc.timetable.update.AppUpdateDialog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -225,6 +230,16 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         var savedSettingsItemIndex by rememberSaveable { mutableIntStateOf(0) }
         var savedSettingsItemOffset by rememberSaveable { mutableIntStateOf(0) }
         var secondaryPage by rememberSaveable { mutableStateOf(SecondaryPage.NONE) }
+        val announcementStore = remember(context) { AnnouncementStore(context) }
+        val announcementRevision by announcementStore.revision.collectAsStateWithLifecycle()
+        val announcementItems = remember(announcementRevision) { announcementStore.items() }
+        val importantAnnouncement = remember(announcementRevision) { announcementStore.important() }
+        LaunchedEffect(announcementStore) { announcementStore.refresh() }
+        if (importantAnnouncement != null && secondaryPage == SecondaryPage.NONE && current != null) {
+            ImportantAnnouncementDialog(importantAnnouncement,
+                onDismiss = { announcementStore.dismiss(importantAnnouncement) },
+                onOpen = { announcementStore.dismiss(importantAnnouncement); secondaryPage = SecondaryPage.ANNOUNCEMENTS })
+        }
         var upcomingChangesDialog by rememberSaveable { mutableStateOf(false) }
         var importReturnPage by rememberSaveable { mutableStateOf(ImportReturnPage.NONE) }
         var credentialRevision by rememberSaveable { mutableIntStateOf(0) }
@@ -393,6 +408,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         }
 
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            scope.launch { announcementStore.refresh() }
             notificationAllowed = QztcNotifications.canPost(context)
             if (retestReminderOnResume) {
                 retestReminderOnResume = false
@@ -875,6 +891,30 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                             SecondaryPage.PLUGIN_MARKET -> PluginMarketScreen(
                                 onBack = { closeSecondaryPage() },
                                 onManagePlugin = { openSecondaryPage(SecondaryPage.AD_SKIP) },
+                                onReviewPlugin = { openSecondaryPage(SecondaryPage.REVIEW_PLUGIN) },
+                            )
+                            SecondaryPage.REVIEW_PLUGIN -> cn.qztc.timetable.review.ReviewScreen(onBack = { closeSecondaryPage() })
+                            SecondaryPage.STUDY -> StudyScreen(
+                                semesterLabel = activeSemester?.name ?: "尚未导入课表",
+                                courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
+                                credentials = savedCredentials,
+                                onBack = { closeSecondaryPage() },
+                                onConfigureAccount = { importReturnPage = ImportReturnPage.STUDY; secondaryPage = SecondaryPage.QNU_IMPORT },
+                            )
+                            SecondaryPage.GRADE_PORTAL -> AcademicPortalScreen(
+                                title = "成绩查询",
+                                credentials = savedCredentials,
+                                onBack = { secondaryPage = SecondaryPage.STUDY },
+                            )
+                            SecondaryPage.EVALUATION_PORTAL -> AcademicPortalScreen(
+                                title = "快速评教",
+                                credentials = savedCredentials,
+                                onBack = { secondaryPage = SecondaryPage.STUDY },
+                            )
+                            SecondaryPage.ANNOUNCEMENTS -> AnnouncementScreen(
+                                store = announcementStore,
+                                onBack = { closeSecondaryPage() },
+                                onUpdate = { checkForUpdates() },
                             )
 
                             SecondaryPage.PERSONALIZATION -> PersonalizationScreen(
@@ -1219,7 +1259,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                     runCatching { credentialStore.save(credentials) }
                                         .onSuccess {
                                             credentialRevision += 1
-                                            scope.launch { snackbarHostState.showSnackbar("教务账号已加密保存，仅用于本页自动填充") }
+                                            scope.launch { snackbarHostState.showSnackbar("教务账号已加密保存，可用于课表与成绩获取") }
                                         }
                                         .onFailure { error ->
                                             scope.launch {
@@ -1229,11 +1269,13 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 },
                                 onClearCredentials = {
                                     credentialStore.clear()
+                                    cn.qztc.timetable.education.GradeCache(context).clear()
                                     credentialRevision += 1
                                     scope.launch { snackbarHostState.showSnackbar("已清除保存的教务账号") }
                                 },
                                 onBack = {
                                     val returnPage = when (importReturnPage) {
+                                        ImportReturnPage.STUDY -> SecondaryPage.STUDY
                                         ImportReturnPage.SYNC_CENTER -> SecondaryPage.SEMESTER_SCHEDULE
                                         ImportReturnPage.COURSE_ARRANGEMENT -> SecondaryPage.SEMESTER_SCHEDULE
                                         ImportReturnPage.NONE -> SecondaryPage.NONE
@@ -1305,6 +1347,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                                 ImportReturnPage.COURSE_ARRANGEMENT -> SecondaryPage.SEMESTER_SCHEDULE
                                                 ImportReturnPage.SYNC_CENTER -> if (syncOnlyImport) SecondaryPage.SYNC_CENTER else SecondaryPage.NONE
                                                 ImportReturnPage.NONE -> SecondaryPage.NONE
+                                                ImportReturnPage.STUDY -> SecondaryPage.STUDY
                                             }
                                             if (nextPage == SecondaryPage.NONE) closeSecondaryPage() else secondaryPage = nextPage
                                             importReturnPage = ImportReturnPage.NONE
@@ -1458,6 +1501,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                     importReturnPage = ImportReturnPage.NONE
                                     openSecondaryPage(SecondaryPage.QNU_IMPORT)
                                 },
+                                onStudyClick = { openSecondaryPage(SecondaryPage.STUDY) },
+                                onEvaluationClick = { openSecondaryPage(SecondaryPage.EVALUATION_PORTAL) },
                                 onCampusAliasClick = {
                                     openSecondaryPage(SecondaryPage.CAMPUS_ALIASES)
                                 },
@@ -1487,6 +1532,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 onStorageClick = { refreshSnapshots(); openSecondaryPage(SecondaryPage.STORAGE) },
                                 onAdSkipClick = { openSecondaryPage(SecondaryPage.AD_SKIP) },
                                 onPluginMarketClick = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
+                                onAnnouncementsClick = { openSecondaryPage(SecondaryPage.ANNOUNCEMENTS) },
+                                unreadAnnouncements = announcementItems.count { !announcementStore.read(it) },
                                 onPrivacyAboutClick = {
                                     openSecondaryPage(SecondaryPage.PRIVACY_ABOUT)
                                 },
@@ -1497,7 +1544,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                     }
                     // Native WebViews must draw directly in the host. A cached
                     // transition layer can stop presenting their new frames.
-                    if (pageKey.secondary in setOf(SecondaryPage.CAMPUS_MAP, SecondaryPage.CAMPUS_ALIASES, SecondaryPage.QNU_IMPORT)) {
+                    if (pageKey.secondary in setOf(SecondaryPage.CAMPUS_MAP, SecondaryPage.CAMPUS_ALIASES, SecondaryPage.QNU_IMPORT, SecondaryPage.GRADE_PORTAL, SecondaryPage.EVALUATION_PORTAL)) {
                         pageContent(pageKey)
                     } else {
                         AnimatedContent(
@@ -1570,6 +1617,11 @@ private enum class SecondaryPage {
     STORAGE,
     AD_SKIP,
     PLUGIN_MARKET,
+    REVIEW_PLUGIN,
+    STUDY,
+    GRADE_PORTAL,
+    EVALUATION_PORTAL,
+    ANNOUNCEMENTS,
     NONE,
     COURSE_COLORS,
     DAY_DETAIL,
@@ -1585,6 +1637,7 @@ private enum class SecondaryPage {
 }
 
 private enum class ImportReturnPage {
+    STUDY,
     COURSE_ARRANGEMENT,
     NONE,
     SYNC_CENTER,

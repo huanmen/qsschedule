@@ -69,6 +69,8 @@ fun PrivacyAboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     if (!amapEnabled) Text("进入校园地图，点击定位可选择启用。", style = QztcTypography.meta, color = colors.mut)
                     TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://lbs.amap.com/pages/privacy/"))) } }) { Text("高德隐私政策") }
                     Text("校历日期来自年度校历服务或用户手动设置。应用不会读取或写入系统日历。", style = QztcTypography.body, color = colors.mut)
+                    Text("AI 好评助手仅在点击生成时，将所填素材发送至你配置的模型服务。API 密钥使用 Android Keystore 加密保存在本机，不经开发者服务器；不会读取课表、其他应用或自动发布评价。删除插件会清除草稿和模型配置。", style = QztcTypography.body, color = colors.mut)
+                    Text("公告和更新优先从开发者服务器获取，更新失败时使用 Gitee 备用源。下载完成后仅上报随机安装标识、包类型与版本用于去重统计；不含账号、课表、屏幕内容或硬件编号，服务器不保存原标识与访问 IP。", style = QztcTypography.body, color = colors.mut)
                 }
             }
             GlassSurface(

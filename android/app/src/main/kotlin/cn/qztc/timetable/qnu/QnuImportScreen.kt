@@ -605,7 +605,7 @@ fun QnuImportScreen(
                                 onSaveCredentials(credentials)
                                 showAccount = false
                                 if (QnuEndpointPolicy.isAuthenticationUrl(currentUrl)) webView?.let { autofillCredentials(it, credentials, force = true) }
-                                status = "教务账号已加密保存，仅用于本页自动填充"
+                                status = "教务账号已加密保存，可用于课表导入及成绩查询"
                             } else {
                                 status = "请输入账号和密码后再保存"
                             }
@@ -1192,7 +1192,7 @@ internal fun autofillCredentials(view: WebView, credentials: QnuSavedCredentials
 }
 
 /** The school portal opens a blank popup and posts its SSO form into it; keep that POST in this WebView. */
-private fun installPortalSsoBridge(view: WebView) {
+internal fun installPortalSsoBridge(view: WebView) {
     view.evaluateJavascript(
         """
         (() => {

@@ -20,12 +20,14 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicReference
+import cn.qztc.timetable.distribution.DistributionClient
 
 /** Small, signed-by-the-APK update feed. The server never receives timetable data. */
 object AppUpdateClient {
     const val MANIFEST_URL = "https://gitee.com/huandyu/qsschedule/raw/master/update.json"
+    const val PRIMARY_MANIFEST_URL = DistributionClient.BASE_URL + "/api/update"
     // Gitee Release attachments redirect to this official file-delivery host.
-    private val TRUSTED_DOWNLOAD_HOSTS = setOf("gitee.com", "giteeusercontent.com", "foruda.gitee.com")
+    private val TRUSTED_DOWNLOAD_HOSTS = setOf("gitee.com", "giteeusercontent.com", "foruda.gitee.com", "huanmen.com.cn")
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 20_000
     private const val MAX_MANIFEST_BYTES = 64 * 1024
@@ -71,7 +73,7 @@ object AppUpdateClient {
 
     suspend fun check(currentVersionCode: Int): Result<Manifest?> = withContext(Dispatchers.IO) {
         runCatching {
-            val manifest = fetchManifest()
+            val manifest = resolveManifest(::fetchManifest)
             require(manifest.latestVersionCode >= 1) { "更新清单版本号无效" }
             require(manifest.latestVersionName.isNotBlank()) { "更新清单版本名称为空" }
             validateDownloadUrl(manifest.apkUrl)
@@ -82,6 +84,26 @@ object AppUpdateClient {
     }
 
     suspend fun download(
+        context: Context,
+        manifest: Manifest,
+        control: DownloadControl = DownloadControl(),
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): Result<File> {
+        val first = downloadFrom(context, manifest, control, onProgress)
+        if (first.isSuccess) {
+            DistributionClient.completed(context, "app", manifest.latestVersionCode)
+            return first
+        }
+        control.ensureRunning()
+        if (URI(manifest.apkUrl).host != "huanmen.com.cn") return first
+        val fallback = withContext(Dispatchers.IO) { runCatching { fetchManifest(MANIFEST_URL).also(::validateManifest) }.getOrNull() }
+        if (fallback == null || !sameRelease(manifest, fallback)) return first
+        val result = downloadFrom(context, fallback, control, onProgress)
+        if (result.isSuccess) DistributionClient.completed(context, "app", manifest.latestVersionCode)
+        return result
+    }
+
+    private suspend fun downloadFrom(
         context: Context,
         manifest: Manifest,
         control: DownloadControl = DownloadControl(),
@@ -170,8 +192,8 @@ object AppUpdateClient {
         context.startActivity(intent)
     }
 
-    private fun fetchManifest(): Manifest {
-        val connection = openTrustedConnection(MANIFEST_URL, "GET", "application/json")
+    private fun fetchManifest(url: String): Manifest {
+        val connection = openTrustedConnection(url, "GET", "application/json")
         try {
             require(connection.responseCode in 200..299) { "检查更新失败（HTTP ${connection.responseCode}）" }
             val length = connection.contentLengthLong
@@ -192,9 +214,22 @@ object AppUpdateClient {
             "更新地址主机不受支持"
         }
         require(uri.userInfo == null && uri.fragment == null) { "更新地址包含不安全参数" }
+        if (uri.host == "huanmen.com.cn") require(uri.path.startsWith("/qsschedule/") && uri.path.split('/').none { it == ".." || it == "." } && (uri.port == -1 || uri.port == 443)) { "更新地址路径不受支持" }
     }
 
-    private fun openTrustedConnection(value: String, method: String, accept: String, control: DownloadControl? = null): HttpURLConnection {
+    internal fun validateManifest(manifest: Manifest) {
+        require(manifest.latestVersionCode > 0 && manifest.latestVersionName.isNotBlank())
+        require(manifest.sizeBytes in 1..MAX_APK_BYTES && manifest.sha256.matches(Regex("[A-Fa-f0-9]{64}")))
+        validateDownloadUrl(manifest.apkUrl)
+    }
+    internal fun resolveManifest(fetch: (String) -> Manifest): Manifest =
+        listOf(PRIMARY_MANIFEST_URL, MANIFEST_URL).firstNotNullOfOrNull { url ->
+            runCatching { fetch(url).also(::validateManifest) }.getOrNull()
+        } ?: error("暂时无法检查更新")
+    internal fun sameRelease(a: Manifest, b: Manifest) = a.latestVersionCode == b.latestVersionCode &&
+        a.sha256.equals(b.sha256, ignoreCase = true) && a.sizeBytes == b.sizeBytes
+
+    internal fun openTrustedConnection(value: String, method: String, accept: String, control: DownloadControl? = null): HttpURLConnection {
         var current = URL(value)
         repeat(MAX_REDIRECTS + 1) { redirectCount ->
             control?.ensureRunning()

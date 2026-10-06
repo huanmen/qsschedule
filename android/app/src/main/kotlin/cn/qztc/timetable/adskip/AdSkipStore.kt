@@ -14,6 +14,9 @@ object AdSkipRuntime {
     private val state = MutableStateFlow(false)
     val connected = state.asStateFlow()
     internal fun setConnected(value: Boolean) { state.value = value }
+    private val backgroundState = MutableStateFlow("未启动")
+    val background = backgroundState.asStateFlow()
+    internal fun setBackground(value: String) { backgroundState.value = value }
 }
 
 data class AdSkipRecord(val timestamp: Long, val app: String, val rule: String, val result: String)
@@ -27,13 +30,22 @@ object AdSkipStore {
     fun prefs(context: Context) = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
     fun installed(context: Context): Boolean = prefs(context).getBoolean("installed", prefs(context).getBoolean("enabled", false) || localPack(context) != null)
     fun enabled(context: Context): Boolean = installed(context) && prefs(context).getBoolean("enabled", false)
+    fun feedbackEnabled(context: Context) = prefs(context).getBoolean("feedback", true)
+    fun foregroundEnabled(context: Context) = prefs(context).getBoolean("foreground", true)
+    fun pluginNeedsUpdate(context: Context, latest: Int = 2) = installed(context) && prefs(context).getInt("plugin_version", 1) < latest
+    fun updatePlugin(context: Context, version: Int = 2) { prefs(context).edit().putInt("plugin_version", version).apply() }
+    fun applicationExcluded(context: Context, packageName: String) = !prefs(context).getBoolean("app:" + packageName, true)
+    fun setFeedback(context: Context, value: Boolean) { prefs(context).edit().putBoolean("feedback", value).apply() }
+    fun setForeground(context: Context, value: Boolean) { prefs(context).edit().putBoolean("foreground", value).apply() }
     fun setEnabled(context: Context, value: Boolean) {
         require(!value || installed(context)) { "请先安装广告辅助插件" }
         prefs(context).edit().putBoolean("enabled", value).apply()
     }
 
-    fun appEnabled(context: Context, packageName: String): Boolean = AdSkipRules.supportedPackage(packageName) && rules(context).any { it.packageName == packageName } &&
-        prefs(context).getBoolean("app:$packageName", AdSkipRules.bundled.rules.any { it.packageName == packageName })
+    fun genericEnabled(context: Context) = installed(context) && prefs(context).getBoolean("rule:" + AdSkipGenericRules.ID, true)
+    fun appEnabled(context: Context, packageName: String): Boolean = installed(context) && AdSkipRules.supportedPackage(packageName) &&
+        (rules(context).any { it.packageName == packageName } || (genericEnabled(context) && packageName in AdSkipApplications.labels(context))) &&
+        prefs(context).getBoolean("app:$packageName", true)
     fun setAppEnabled(context: Context, packageName: String, value: Boolean) {
         require(AdSkipRules.supportedPackage(packageName))
         prefs(context).edit().putBoolean("app:$packageName", value).apply()
@@ -48,15 +60,25 @@ object AdSkipStore {
         return cachedPack
     }
     fun rules(context: Context): List<AdSkipRule> = if (!installed(context)) emptyList() else
-        localPack(context)?.rules ?: AdSkipRules.bundled.rules
+        (AdSkipRules.bundled.rules + localPack(context)?.rules.orEmpty()).distinctBy { it.id }
+    fun rulesFor(context: Context, packageName: String): List<AdSkipRule> {
+        if (!appEnabled(context, packageName)) return emptyList()
+        val specific = rules(context).filter { it.packageName == packageName }
+        val generic = if (genericEnabled(context) && packageName in AdSkipApplications.labels(context))
+            listOf(AdSkipGenericRules.rule(packageName, AdSkipApplications.labels(context)[packageName])) else emptyList()
+        return specific + generic
+    }
     fun appNames(context: Context): Map<String, String> = AdSkipRules.appNames + rules(context).associate {
         it.packageName to (AdSkipRules.appNames[it.packageName] ?: it.appLabel ?: it.packageName)
     }
     fun activePackages(context: Context): List<String> = if (!enabled(context)) emptyList() else
-        rules(context).filter { appEnabled(context, it.packageName) && ruleEnabled(context, it) }.map { it.packageName }.distinct()
+        (rules(context).filter { appEnabled(context, it.packageName) && ruleEnabled(context, it) }.map { it.packageName } +
+            if (genericEnabled(context)) AdSkipApplications.labels(context).keys.filter { appEnabled(context, it) } else emptyList()).distinct()
     fun ruleEnabled(context: Context, rule: AdSkipRule): Boolean =
-        prefs(context).getBoolean("rule:${rule.id}", AdSkipRules.bundled.rules.any { it == rule })
+        !requiresReimport(rule) && prefs(context).getBoolean("rule:${rule.id}", rule.id == AdSkipGenericRules.ID || AdSkipRules.bundled.rules.any { it == rule })
+    fun requiresReimport(rule: AdSkipRule) = rule.id.startsWith("import-") && rule.adapterVersion < 2
     fun setRuleEnabled(context: Context, rule: AdSkipRule, value: Boolean) {
+        require(!value || !requiresReimport(rule)) { "请重新导入原规则文件，以恢复完整的匹配条件" }
         prefs(context).edit().putBoolean("rule:${rule.id}", value).apply()
     }
     /** Validate everything before atomic replacement. Imports never auto-enable any rule. */
@@ -67,16 +89,57 @@ object AdSkipStore {
         pack.rules.forEach { editor.putBoolean("rule:${it.id}", false) }
         pack.rules.map { it.packageName }.distinct().forEach { editor.putBoolean("app:$it", false) }
         editor.putBoolean("installed", true).putBoolean("enabled", false)
+        editor.putBoolean("rule:" + AdSkipGenericRules.ID, false)
         editor.putString("import_issues", Json.encodeToString(issues))
         editor.putString(PACK, AdSkipRules.encode(pack)).apply()
     }
     fun importIssues(context: Context): List<AdSkipImportIssue> = runCatching {
         Json.decodeFromString<List<AdSkipImportIssue>>(prefs(context).getString("import_issues", "[]") ?: "[]")
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()) + localPack(context)?.rules.orEmpty().filter(::requiresReimport).map {
+        AdSkipImportIssue(it.appLabel ?: it.packageName, it.name, "旧适配器可能遗漏条件，已暂停；请重新导入原文件")
+    }
+    /** Additions preserve built-ins and existing choices. New or changed rules start disabled. */
+    fun addRules(context: Context, pack: AdSkipRulePack, issues: List<AdSkipImportIssue> = emptyList(), pluginVersion: Int? = null) {
+        require(installed(context) || pluginVersion != null)
+        require(pluginVersion == null || pluginVersion > 0)
+        AdSkipRules.validate(pack, allowExternalApps = true)
+        val builtin = AdSkipRules.bundled.rules.associateBy { it.id }
+        pack.rules.forEach { require(it.id !in builtin || builtin[it.id] == it) { "规则 ID 与内置规则重复" } }
+        val additions = pack.rules.filter { it.id !in builtin }
+        val old = localPack(context)?.rules.orEmpty().filter { it.id !in builtin }
+        val merged = pack.copy(name = "我的规则", rules = (additions + old).distinctBy { it.id })
+        if (merged.rules.isNotEmpty()) AdSkipRules.validate(merged, allowExternalApps = true)
+        val editor = prefs(context).edit()
+        if (pluginVersion != null) {
+            if (!installed(context)) editor.putBoolean("enabled", false)
+            editor.putBoolean("installed", true).putInt("plugin_version", pluginVersion)
+        }
+        additions.filter { rule -> old.none { it == rule } }.forEach { editor.putBoolean("rule:" + it.id, false) }
+        if (merged.rules.isNotEmpty()) editor.putString(PACK, AdSkipRules.encode(merged))
+        editor.putString("import_issues", Json.encodeToString(issues)).apply()
+    }
+    fun removeRule(context: Context, rule: AdSkipRule) {
+        require(AdSkipRules.bundled.rules.none { it.id == rule.id } && rule.id != AdSkipGenericRules.ID)
+        val pack = localPack(context) ?: return
+        val remaining = pack.rules.filter { it.id != rule.id }
+        val edit = prefs(context).edit().remove("rule:" + rule.id)
+        if (remaining.isEmpty()) edit.remove(PACK) else edit.putString(PACK, AdSkipRules.encode(pack.copy(rules = remaining)))
+        edit.apply()
+    }
+    fun updateRule(context: Context, old: AdSkipRule, changed: AdSkipRule) {
+        require(old.id == changed.id && old.packageName == changed.packageName) { "规则所属应用和标识不能更改" }
+        require(AdSkipRules.bundled.rules.none { it.id == old.id }) { "内置规则不能修改" }
+        val pack = localPack(context) ?: error("规则不存在")
+        require(pack.rules.any { it.id == old.id }) { "规则不存在" }
+        val updated = pack.copy(rules = pack.rules.map { if (it.id == old.id) changed else it })
+        AdSkipRules.validate(updated, allowExternalApps = true)
+        prefs(context).edit().putString(PACK, AdSkipRules.encode(updated)).putBoolean("rule:" + old.id, false).apply()
+    }
     fun restoreBundled(context: Context) {
         val editor = prefs(context).edit().remove(PACK).remove("import_issues")
         prefs(context).all.keys.filter { it.startsWith("rule:") || it.startsWith("app:") }.forEach(editor::remove)
         editor.putBoolean("installed", true).putBoolean("enabled", false)
+        editor.putInt("plugin_version", 2)
         editor.apply()
     }
 
@@ -88,7 +151,7 @@ object AdSkipStore {
     }
 
     /** Download a bounded v1 rule pack. Installation remains a separate, user-confirmed step. */
-    fun downloadPack(url: String, open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }): AdSkipImportPreview {
+    fun downloadPack(url: String, installedPackages: Map<String, String> = emptyMap(), open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }): AdSkipImportPreview {
         val target = URL(url.trim())
         require(target.protocol.equals("https", ignoreCase = true)) { "插件下载地址必须使用 HTTPS" }
         require(target.host.isNotBlank() && target.userInfo == null) { "下载地址无效" }
@@ -116,7 +179,7 @@ object AdSkipStore {
                 output.toByteArray()
             }
             require(bytes.size <= AdSkipRules.MAX_BYTES) { "插件文件超过 4 MB" }
-            return AdSkipImport.parse(bytes.toString(Charsets.UTF_8))
+            return AdSkipImport.parse(bytes.toString(Charsets.UTF_8), installedPackages)
         } finally {
             connection.disconnect()
         }
@@ -140,4 +203,22 @@ object AdSkipStore {
             if (fields.size != 4) null else fields[0].toLongOrNull()?.let { AdSkipRecord(it, fields[1], fields[2], fields[3]) }
         }.toList()
     fun clearRecords(context: Context) { prefs(context).edit().remove("records").apply() }
+    fun recordOutcome(context: Context, rule: AdSkipRule, result: AdSkipResult) {
+        if (!installed(context)) return
+        val outcome = AdSkipOutcome.label(result) ?: return
+        val app = AdSkipRules.appNames[rule.packageName] ?: rule.appLabel ?: rule.packageName
+        val entry = System.currentTimeMillis().toString() + "|" + app + "|" + rule.name + "|" + outcome
+        val old = prefs(context).getString("outcomes", "").orEmpty().lineSequence().filter(String::isNotBlank)
+        prefs(context).edit().putString("outcomes", (sequenceOf(entry) + old).take(MAX_RECORDS).joinToString("\n")).apply()
+    }
+    fun outcomes(context: Context): List<AdSkipRecord> = prefs(context).getString("outcomes", "").orEmpty().lineSequence().mapNotNull {
+        val f = it.split('|')
+        if (f.size != 4 || f[3] !in setOf("成功", "失败")) null else f[0].toLongOrNull()?.let { time -> AdSkipRecord(time, f[1], f[2], f[3]) }
+    }.toList()
+    fun clearOutcomes(context: Context) { prefs(context).edit().remove("outcomes").apply() }
+    fun migrateDiagnostics(context: Context) {
+        if (prefs(context).getInt("diagnostics_version", 0) < 2) {
+            prefs(context).edit().remove("records").putInt("diagnostics_version", 2).apply()
+        }
+    }
 }

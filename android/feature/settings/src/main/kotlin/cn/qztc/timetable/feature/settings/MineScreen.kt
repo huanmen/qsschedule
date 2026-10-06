@@ -33,6 +33,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ViewWeek
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.RateReview
 import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Notifications
@@ -159,6 +161,8 @@ fun MineScreen(
     onFontSizeModeChange: (FontSizeMode) -> Unit = {},
     onFontScaleChange: (Float) -> Unit = {},
     onEduImportClick: () -> Unit,
+    onStudyClick: () -> Unit = {},
+    onEvaluationClick: () -> Unit = {},
     onCampusAliasClick: () -> Unit,
     onCampusMapClick: () -> Unit = onCampusAliasClick,
     onStartDateClick: () -> Unit,
@@ -167,6 +171,8 @@ fun MineScreen(
     onStorageClick: () -> Unit = {},
     onAdSkipClick: () -> Unit = {},
     onPluginMarketClick: () -> Unit = onAdSkipClick,
+    onAnnouncementsClick: () -> Unit = {},
+    unreadAnnouncements: Int = 0,
     onPrivacyAboutClick: () -> Unit,
     onCheckUpdateClick: () -> Unit = {},
 ) {
@@ -220,12 +226,16 @@ fun MineScreen(
         "课表显示" to listOf(
             SettingItem("周末列显示", "周六、周日无课时的显示方式", Icons.Outlined.ViewWeek, value = weekendLabel, onClick = { weekendSheetOpen = true }),
         ),
+        "学习" to listOf(
+            SettingItem("学习情况", "查看成绩与当前学分", Icons.Outlined.Assessment, onClick = onStudyClick),
+        ),
         "个性化" to listOf(
             SettingItem("首页视图", "启动时先打开的页面", Icons.Outlined.Home, value = homeLabel, onClick = { homeSheetOpen = true }),
             SettingItem("显示与外观", "深色模式、课程颜色、背景与玻璃", Icons.Outlined.Palette, value = state.backgroundLabel, onClick = onPersonalizationClick),
         ),
         "扩展工具" to listOf(
-            SettingItem("插件市场", "可选校园工具入口，当前尚未开放", Icons.Outlined.AutoAwesome, onClick = onPluginMarketClick),
+            SettingItem("插件市场", "安装与管理扩展工具", Icons.Outlined.AutoAwesome, onClick = onPluginMarketClick),
+            SettingItem("公告", "更新与重要通知", Icons.Outlined.Notifications, value = if (unreadAnnouncements > 0) unreadAnnouncements.toString() + " 条未读" else null, onClick = onAnnouncementsClick),
         ),
         "数据" to listOf(
             SettingItem("数据与存储", "快照、导出文件与可清理缓存", Icons.Outlined.Storage, onClick = onStorageClick),

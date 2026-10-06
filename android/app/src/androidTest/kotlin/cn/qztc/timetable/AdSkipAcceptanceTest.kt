@@ -71,25 +71,62 @@ class AdSkipAcceptanceTest {
     @Test fun screenStartsOffExplainsServiceAndCancelDoesNotEnable() {
         val context = isolatedContext()
         try {
+            AdSkipStore.restoreBundled(context)
             compose.setContent { CompositionLocalProvider(LocalContext provides context) { MaterialTheme { AdSkipScreen {} } } }
-            compose.onNodeWithText("广告辅助未安装").assertIsDisplayed()
-            compose.onNodeWithText("安装基础包").performScrollTo().performClick()
-            compose.onNodeWithText("安装并保持关闭").performClick()
-            compose.onNodeWithText("广告辅助已暂停").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("无需 GKD、Shizuku 或 Root").performScrollTo().assertIsDisplayed()
-            val screenshot = File(context.getExternalFilesDir(null), "adskip-qa.png")
-            screenshot.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
-            compose.onAllNodes(isToggleable()).onFirst().performScrollTo().performClick()
-            compose.onNodeWithText("开启广告辅助？").assertIsDisplayed()
+            compose.onNodeWithText("服务未开启").assertIsDisplayed()
+            compose.onNodeWithText("应用与规则").assertDoesNotExist()
+            compose.onNodeWithText("删除").assertDoesNotExist()
+            compose.onNodeWithText("开启服务").performClick()
             compose.onNodeWithText("取消").performClick()
             assertFalse(AdSkipStore.enabled(context))
-            compose.onNodeWithText("菜鸟").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("启动广告仍待适配。").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("删除已安装插件").performScrollTo().performClick()
+            compose.onNodeWithText("运行日志").performScrollTo().performClick()
+            compose.onNodeWithText("暂无日志").assertIsDisplayed()
+            compose.onNodeWithContentDescription("返回").performClick()
+            compose.onNodeWithText("通用广告跳过").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("通用广告跳过").performScrollTo().performClick()
+            compose.runOnIdle { assertFalse(AdSkipStore.genericEnabled(context)) }
+        } finally { AdSkipStore.prefs(context).edit().clear().commit() }
+    }
+
+    @Test fun additionsPreserveBuiltinsAndChoicesAndLogOnlyFinalResults() {
+        val context = isolatedContext()
+        try {
+            AdSkipStore.restoreBundled(context)
+            AdSkipStore.setEnabled(context, true)
+            val builtin = AdSkipRules.bundled.rules.first()
+            AdSkipStore.setRuleEnabled(context, builtin, false)
+            val added = builtin.copy(id = "custom-example", packageName = "example.shopping", appLabel = "示例应用")
+            AdSkipStore.addRules(context, AdSkipRules.bundled.copy(rules = listOf(added)))
+            assertTrue(AdSkipStore.enabled(context))
+            assertTrue(AdSkipStore.genericEnabled(context))
+            assertFalse(AdSkipStore.ruleEnabled(context, builtin))
+            assertFalse(AdSkipStore.ruleEnabled(context, added))
+            assertTrue(AdSkipStore.rules(context).containsAll(AdSkipRules.bundled.rules))
+            AdSkipStore.setRuleEnabled(context, added, true)
+            AdSkipStore.addRules(context, AdSkipRules.bundled.copy(rules = listOf(added)))
+            assertTrue(AdSkipStore.ruleEnabled(context, added))
+            AdSkipStore.recordOutcome(context, added, AdSkipResult.CLICK_ACCEPTED)
+            assertTrue(AdSkipStore.outcomes(context).isEmpty())
+            AdSkipStore.recordOutcome(context, added, AdSkipResult.UNCONFIRMED)
+            AdSkipStore.recordOutcome(context, added, AdSkipResult.TARGET_GONE)
+            assertEquals(listOf("成功", "失败"), AdSkipStore.outcomes(context).map { it.result })
+            AdSkipStore.removeRule(context, added)
+            assertEquals(AdSkipRules.bundled.rules, AdSkipStore.rules(context))
+        } finally { AdSkipStore.prefs(context).edit().clear().commit() }
+    }
+
+    @Test fun pluginInstallAndDeleteBelongToMarket() {
+        val context = isolatedContext()
+        try {
+            AdSkipStore.restoreBundled(context)
+            compose.setContent { CompositionLocalProvider(LocalContext provides context) { MaterialTheme { PluginMarketScreen({}, {}) } } }
+            compose.onNodeWithText("打开").assertDoesNotExist()
+            compose.onNodeWithText("已安装").assertDoesNotExist()
             compose.onNodeWithText("删除").performClick()
-            compose.onNodeWithText("广告辅助未安装").performScrollTo().assertIsDisplayed()
-            assertFalse(AdSkipStore.installed(context))
-            assertTrue(AdSkipStore.rules(context).isEmpty())
+            compose.onNodeWithText("删除广告辅助？").assertIsDisplayed()
+            compose.onAllNodesWithText("删除").onLast().performClick()
+            compose.runOnIdle { assertFalse(AdSkipStore.installed(context)) }
+            compose.onAllNodesWithText("下载").onFirst().assertIsDisplayed()
         } finally { AdSkipStore.prefs(context).edit().clear().commit() }
     }
 }

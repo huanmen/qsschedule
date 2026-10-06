@@ -11,6 +11,23 @@ import java.net.URL
 import kotlinx.coroutines.CancellationException
 
 class AppUpdateClientTest {
+    @Test fun unavailableOrInvalidPrimaryFallsBackToGitee() {
+        val fallback = AppUpdateClient.Manifest(13, "1.0.0", "https://gitee.com/test/app.apk", "a".repeat(64), 100)
+        val calls = mutableListOf<String>()
+        val found = AppUpdateClient.resolveManifest { url ->
+            calls += url
+            if (url == AppUpdateClient.PRIMARY_MANIFEST_URL) fallback.copy(sha256 = "bad") else fallback
+        }
+        assertEquals(fallback, found)
+        assertEquals(listOf(AppUpdateClient.PRIMARY_MANIFEST_URL, AppUpdateClient.MANIFEST_URL), calls)
+    }
+    @Test fun downloadFallbackMustBeExactlySameRelease() {
+        val original = AppUpdateClient.Manifest(13, "1.0.0", "https://huanmen.com.cn/qsschedule/downloads/app.apk", "a".repeat(64), 100)
+        assertTrue(AppUpdateClient.sameRelease(original, original.copy(apkUrl = "https://gitee.com/test/app.apk")))
+        assertFalse(AppUpdateClient.sameRelease(original, original.copy(latestVersionCode = 14)))
+        assertFalse(AppUpdateClient.sameRelease(original, original.copy(sizeBytes = 99)))
+        assertFalse(AppUpdateClient.sameRelease(original, original.copy(sha256 = "b".repeat(64))))
+    }
     @Test fun progressReportsCopiedBytesInOrderAndReachesTotal() {
         val bytes = ByteArray(150_001)
         val progress = mutableListOf<Long>()
@@ -62,6 +79,7 @@ class AppUpdateClientTest {
             "https://foruda.gitee.com/attach_file/example/app.apk",
             "https://giteeusercontent.com/app.apk",
             "https://assets.giteeusercontent.com/app.apk",
+            "https://huanmen.com.cn/qsschedule/downloads/qsschedule-1.0.0-release.apk",
         ).forEach { AppUpdateClient.validateDownloadUrl(it) }
     }
 
@@ -71,6 +89,9 @@ class AppUpdateClientTest {
             "https://foruda.gitee.com.example.com/app.apk",
             "https://evilgiteeusercontent.com/app.apk",
             "https://other.gitee.com/app.apk",
+            "https://huanmen.com.cn.example.com/qsschedule/app.apk",
+            "https://huanmen.com.cn/other/app.apk",
+            "https://huanmen.com.cn:8443/qsschedule/app.apk",
         ).forEach { value ->
             assertTrue(value, runCatching { AppUpdateClient.validateDownloadUrl(value) }.exceptionOrNull() is IllegalArgumentException)
         }

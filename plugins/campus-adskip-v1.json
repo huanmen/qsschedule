@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "version": 20260926,
+  "name": "校园广告辅助 · 基础规则",
+  "source": "泉师课程表官方规则包；仅原生控件 ID 子集",
+  "rules": [
+    {
+      "id": "yiban-splash",
+      "name": "开屏广告",
+      "packageName": "com.yiban.app",
+      "activityNames": ["com.yiban.app.activity.WelcomeActivity"],
+      "targetId": "btn_splash_ad",
+      "textPrefix": "跳过",
+      "successActivityNames": ["com.yiban.app.home.activity.HomeActivityV2"],
+      "cooldownMs": 6000,
+      "matchWindowMs": 10000,
+      "appLabel": "易班"
+    },
+    {
+      "id": "chaoxing-splash",
+      "name": "开屏广告",
+      "packageName": "com.chaoxing.mobile",
+      "activityNames": ["com.chaoxing.mobile.activity.SplashActivity"],
+      "targetId": "btn_jump",
+      "textPrefix": "跳过",
+      "clickParentId": "jump_view",
+      "successActivityNames": ["com.chaoxing.mobile.main.ui.MainTabActivity"],
+      "cooldownMs": 6000,
+      "matchWindowMs": 10000,
+      "appLabel": "学习通"
+    },
+    {
+      "id": "mybus-route-banner",
+      "name": "线路文字横幅",
+      "packageName": "com.mygolbs.mybus",
+      "activityNames": ["com.mygolbs.mybus.RTimeActivity"],
+      "targetId": "ll_textad_close",
+      "ancestorId": "textad_view",
+      "cooldownMs": 6000,
+      "matchWindowMs": 0,
+      "appLabel": "掌上公交"
+    }
+  ]
+}

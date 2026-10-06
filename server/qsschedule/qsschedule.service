@@ -1,0 +1,24 @@
+[Unit]
+Description=QSSchedule anonymous distribution API
+After=network.target
+
+[Service]
+Type=simple
+User=qsschedule
+Group=qsschedule
+WorkingDirectory=/opt/qsschedule
+EnvironmentFile=/etc/qsschedule.env
+ExecStart=/usr/bin/python3 /opt/qsschedule/app.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qsschedule
+UMask=0027
+MemoryMax=192M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

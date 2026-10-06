@@ -33,6 +33,8 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+__pycache__/
+*.pyc
 web/campus-map/data/users.json
 web/campus-map/data/*.generated.json
 
