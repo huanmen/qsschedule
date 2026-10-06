@@ -54,12 +54,13 @@ internal fun AdSkipRuleList() {
         TextButton(onClick = { importing = true }) { Icon(Icons.Outlined.Add, null); Text("添加") }
     }
     AdSkipCard {
-        AdSkipToggle("通用广告跳过", Icons.Outlined.AutoAwesome, AdSkipStore.genericEnabled(context)) {
+        AdSkipToggle("内置规则", null, AdSkipStore.genericEnabled(context)) {
             AdSkipStore.setRuleEnabled(context, AdSkipGenericRules.rule("example.app"), it)
         }
-        if (rules.isNotEmpty()) AdSkipDivider()
-        rules.forEachIndexed { index, rule ->
-            val builtIn = AdSkipRules.bundled.rules.any { it.id == rule.id }
+        val customRules = rules.filterNot { item -> AdSkipRules.bundled.rules.any { built -> built.id == item.id } }
+        if (customRules.isNotEmpty()) AdSkipDivider()
+        customRules.forEachIndexed { index, rule ->
+            val builtIn = false
             val title = (AdSkipRules.appNames[rule.packageName] ?: rule.appLabel ?: rule.packageName) + " · " + rule.name
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

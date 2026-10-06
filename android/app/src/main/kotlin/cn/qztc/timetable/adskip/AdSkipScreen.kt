@@ -178,11 +178,11 @@ internal fun AdSkipRow(title: String, icon: ImageVector, value: String = "", onC
 }
 
 @Composable
-internal fun AdSkipToggle(title: String, icon: ImageVector, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun AdSkipToggle(title: String, icon: ImageVector?, checked: Boolean, onChange: (Boolean) -> Unit) {
     val colors = LocalQztcColors.current
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(22.dp), tint = colors.mut)
-        Text(title, Modifier.weight(1f).padding(start = 14.dp), style = QztcTypography.body, color = colors.ink)
+        icon?.let { Icon(it, null, Modifier.size(22.dp), tint = colors.mut) }
+        Text(title, Modifier.weight(1f).padding(start = if (icon == null) 0.dp else 14.dp), style = QztcTypography.body, color = colors.ink)
         Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.semantics { contentDescription = title })
     }
 }

@@ -45,7 +45,7 @@ object AdSkipStore {
     fun setSplashOnly(context: Context, value: Boolean) { prefs(context).edit().putBoolean("splash_only", value).apply() }
     fun pluginNeedsUpdate(context: Context, latest: Int = 2) = installed(context) && prefs(context).getInt("plugin_version", 1) < latest
     fun updatePlugin(context: Context, version: Int = 2) { prefs(context).edit().putInt("plugin_version", version).apply() }
-    fun applicationExcluded(context: Context, packageName: String) = !prefs(context).getBoolean("app:" + packageName, true)
+    fun applicationExcluded(context: Context, packageName: String) = !prefs(context).getBoolean("app:" + packageName, !defaultDisabled(context, packageName))
     fun setFeedback(context: Context, value: Boolean) { prefs(context).edit().putBoolean("feedback", value).apply() }
     fun setForeground(context: Context, value: Boolean) { prefs(context).edit().putBoolean("foreground", value).apply() }
     fun setEnabled(context: Context, value: Boolean) {

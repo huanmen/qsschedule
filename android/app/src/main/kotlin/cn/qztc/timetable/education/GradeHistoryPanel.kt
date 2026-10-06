@@ -58,7 +58,7 @@ internal fun rememberGradeHistory(credentials: QnuSavedCredentials?): GradeHisto
             state.status = "请先在导入课表时保存教务账号"; state.needsLogin = true
         } else {
             state.snapshot = withContext(Dispatchers.IO) { GradeCache(context).load(credentials.username) }
-            state.status = if (state.snapshot == null) "点击右上角刷新获取成绩" else "已显示本地成绩 · 点击右上角刷新更新"
+            state.status = if (state.snapshot == null) "点击右上角刷新获取成绩" else ""
         }
     }
     return state
@@ -95,6 +95,34 @@ internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () 
     var selectedId by remember(defaultId) { mutableStateOf(defaultId) }
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("全部") }
+    val allRecords = remember(state.snapshot) {
+        state.snapshot?.records.orEmpty().groupBy { it.courseCode.orEmpty() + "|" + it.courseName }.values.map(::mergeAttempts)
+    }
+    val numericScores = allRecords.mapNotNull { it.score?.toDoubleOrNull() }
+    val weightedCredits = allRecords.mapNotNull { record ->
+        val score = record.score?.toDoubleOrNull() ?: return@mapNotNull null
+        val credit = record.credits?.toDoubleOrNull() ?: return@mapNotNull null
+        score to credit
+    }
+    val weightedAverage = weightedCredits.takeIf { it.isNotEmpty() }?.let { rows ->
+        rows.sumOf { it.first * it.second } / rows.sumOf { it.second }
+    }
+    val averageGpa = allRecords.mapNotNull { it.gpa?.toDoubleOrNull() }.takeIf { it.isNotEmpty() }?.average()
+    val credits = allRecords.mapNotNull { it.credits?.toDoubleOrNull() }.sum()
+    val highest = numericScores.maxOrNull()
+    val filterFields = listOf("开课院系", "选课类型", "考试性质", "缓考", "学分", "绩点", "学时")
+    fun fieldValue(record: QnuGradeRecord, field: String): String? = when (field) {
+        "选课类型" -> record.selection
+        "考试性质" -> record.examType
+        "学分" -> record.credits
+        "绩点" -> record.gpa
+        else -> record.officialFields[field]?.takeIf(String::isNotBlank)
+    }
+    val filterOptions = remember(allRecords) {
+        listOf("全部") + filterFields.flatMap { field ->
+            allRecords.mapNotNull { fieldValue(it, field)?.let { value -> "$field:$value" } }.distinct()
+        }
+    }
     LazyColumn(
         Modifier.fillMaxSize().navigationBarsPadding(),
         contentPadding = PaddingValues(QztcSpacing.md),
@@ -115,9 +143,12 @@ internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () 
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("已读学期" to groups.size.toString(), "成绩记录" to (state.snapshot?.records?.size?.toString() ?: "—")).forEach { (label, value) ->
+                    listOf("加权平均分" to (weightedAverage?.let { "%.1f".format(it) } ?: "—"),
+                        "平均绩点" to (averageGpa?.let { "%.2f".format(it) } ?: "—"),
+                        "已修学分" to (if (allRecords.isEmpty()) "—" else "%.1f".format(credits)),
+                        "最高单科" to (highest?.let { "%.0f".format(it) } ?: "—")).forEach { (label, value) ->
                         Column(Modifier.weight(1f).background(colors.solid.copy(alpha = .65f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp)) {
-                            Text(value, style = QztcTypography.section, color = colors.accentDeep)
+                            Text(value, style = QztcTypography.section, color = colors.accentDeep, maxLines = 1)
                             Text(label, style = QztcTypography.compact, color = colors.mut)
                         }
                     }
@@ -125,11 +156,13 @@ internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () 
                 OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
                     placeholder = { Text("按课程查询") })
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("全部", "不及格", "高分", "有绩点").forEach { option ->
+                    filterOptions.forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
-                Text(state.status, style = QztcTypography.meta, color = if (state.failed) colors.danger else colors.mut)
+                if (state.running || state.failed || state.needsLogin) {
+                    Text(state.status, style = QztcTypography.meta, color = if (state.failed) colors.danger else colors.mut)
+                }
                 state.snapshot?.let { snapshot ->
                     val date = remember(snapshot.updatedAt) { DateTimeFormatter.ofPattern("M月d日 HH:mm").format(Instant.ofEpochMilli(snapshot.updatedAt).atZone(ZoneId.systemDefault())) }
                     Text("上次获取 $date", style = QztcTypography.compact, color = colors.faint)
@@ -150,23 +183,8 @@ internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () 
             }
         }
         groups.filter { it.id == selectedId }.forEach { semester ->
-            item(key = "term-" + semester.id) {
-                Row(
-                    Modifier.fillMaxWidth().background(colors.accentSoft, RoundedCornerShape(QztcCorners.content))
-                        .semantics { stateDescription = "已选择" }
-                        .padding(horizontal = QztcSpacing.md, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(semester.label, style = QztcTypography.section, color = colors.ink)
-                        Text("${semester.records.size} 条成绩", style = QztcTypography.meta, color = colors.mut)
-                    }
-                    Text("${semester.records.size} 条", style = QztcTypography.meta, color = colors.mut)
-                }
-            }
             val records = semester.records.filter { query.isBlank() || it.courseName.contains(query, true) }
-                .filter { filter == "全部" || (filter == "不及格" && it.status in setOf("不及格", "未通过")) ||
-                    (filter == "高分" && (it.score?.toDoubleOrNull() ?: 0.0) >= 85) || (filter == "有绩点" && !it.gpa.isNullOrBlank()) }
+                .filter { filter == "全部" || filter.split(":", limit = 2).let { parts -> parts.size == 2 && fieldValue(it, parts[0]) == parts[1] } }
                 .groupBy { it.courseCode.orEmpty() + "|" + it.courseName }.values.map { mergeAttempts(it) }
             items(records.size, key = { "grade-${semester.id}-$it" }) { i -> GradeHistoryRow(records[i]) }
         }
@@ -193,7 +211,7 @@ private fun GradeHistoryRow(record: QnuGradeRecord) {
         .clickable(remember { MutableInteractionSource() }, indication = null, role = Role.Button) { detailsOpen = !detailsOpen }.padding(horizontal = 10.dp, vertical = 9.dp)) {
     Row(Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(QztcSpacing.md)) {
-        Box(Modifier.widthIn(min = 54.dp, max = 90.dp).background(if (failed) colors.dangerSoft else colors.accentSoft, RoundedCornerShape(16.dp)).padding(10.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).border(3.dp, if (failed) colors.danger else colors.accentDeep, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
             Text(record.score ?: "未公布", style = QztcTypography.section, color = tint)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -217,7 +235,9 @@ private fun GradeHistoryRow(record: QnuGradeRecord) {
         } else listOf("课程号" to record.courseCode, "课序号" to record.courseSequence,
             "选课属性" to record.selection, "考核方式" to record.assessment, "考试性质" to record.examType)
         if (record.officialFields.isEmpty()) Text("此缓存尚未包含完整字段，请刷新成绩补全", style = QztcTypography.compact, color = colors.mut)
-        fields.chunked(2).forEach { row ->
+        val scoreFields = fields.filter { it.first in setOf("平时", "期中", "期末", "总评", "正常考试") }
+        val otherFields = fields.filterNot { it.first in setOf("平时", "期中", "期末", "总评", "正常考试") }
+        (scoreFields.chunked(5) + otherFields.chunked(2)).forEach { row ->
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { (label, value) -> Column(Modifier.weight(1f)) {
                     Text(label, style = QztcTypography.compact, color = colors.faint)
