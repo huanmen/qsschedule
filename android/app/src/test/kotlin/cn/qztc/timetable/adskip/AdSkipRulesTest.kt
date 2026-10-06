@@ -28,7 +28,7 @@ class AdSkipRulesTest {
     }
     @Test fun bundledRoundTripPreservesExistingRulesAndAddsExplicitPopupRule() {
         assertEquals(AdSkipRules.bundled, AdSkipRules.decode(AdSkipRules.encode(AdSkipRules.bundled)))
-        assertEquals(4, AdSkipRules.bundled.rules.size)
+        assertEquals(5, AdSkipRules.bundled.rules.size)
         assertFalse(AdSkipRules.bundled.rules.any { it.packageName == "com.cainiao.wireless" || it.packageName == "com.zhishan.washer" })
     }
     @Test fun genericRuleCooldownIsSeparateForEachApplication() {

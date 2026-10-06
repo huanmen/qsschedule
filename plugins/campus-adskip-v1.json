@@ -39,6 +39,17 @@
       "cooldownMs": 6000,
       "matchWindowMs": 0,
       "appLabel": "掌上公交"
+    },
+    {
+      "id": "mybus-interstitial-close",
+      "name": "居中弹窗广告关闭",
+      "packageName": "com.mygolbs.mybus",
+      "activityNames": ["cj.mobile.fw.activity.PtgInteractionPortraitActivity"],
+      "targetId": "closeAdvertLayout",
+      "ancestorId": "ptgRootAdvertLayout",
+      "cooldownMs": 6000,
+      "matchWindowMs": 0,
+      "appLabel": "掌上公交"
     }
   ]
 }

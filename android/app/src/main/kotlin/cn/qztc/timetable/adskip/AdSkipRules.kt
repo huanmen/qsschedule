@@ -104,6 +104,13 @@ object AdSkipRules {
                 ancestorId = "textad_view", matchWindowMs = 0,
                 allowGesture = true, clickableAncestor = true,
             ),
+            AdSkipRule(
+                id = "mybus-interstitial-close", name = "居中弹窗广告关闭",
+                packageName = "com.mygolbs.mybus", appLabel = "掌上公交",
+                activityNames = listOf("cj.mobile.fw.activity.PtgInteractionPortraitActivity"),
+                targetId = "closeAdvertLayout", ancestorId = "ptgRootAdvertLayout",
+                matchWindowMs = 0, cooldownMs = 6000,
+            ),
             // gkd-kit/subscription 1.186.0, com.realtech.xiaocan group 1 / rule 0.
             // Preserve the complete sibling chain: the first ImageView is the ad.
             AdSkipRule(
