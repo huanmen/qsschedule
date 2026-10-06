@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_row_3"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:background="@drawable/widget_today_course_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="7dp"
+    android:paddingEnd="7dp"
+    android:visibility="gone">
+    <TextView android:id="@+id/widget_time_3" android:layout_width="60dp" android:layout_height="wrap_content" android:maxLines="2" android:textColor="#277565" android:textSize="9sp" android:textStyle="bold" />
+    <ImageView android:layout_width="1dp" android:layout_height="match_parent" android:layout_marginHorizontal="5dp" android:background="#241E6B5D" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/widget_name_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textColor="#173B32" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/widget_room_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textColor="#5F7A72" android:textSize="9sp" />
+    </LinearLayout>
+</LinearLayout>

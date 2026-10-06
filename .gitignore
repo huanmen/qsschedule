@@ -1,0 +1,65 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated frontend output
+node_modules/
+dist/
+build/
+.vite/
+.next/
+
+# Android and Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local prototype and verification artifacts
+.playwright-cli/
+output/
+验证-*.png
+
+# Local tooling and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+web/campus-map/data/users.json
+web/campus-map/data/*.generated.json
+
+# Raw offline school pages may contain student identifiers or session URLs
+*.mht
+*.mhtml
+
+# Private device diagnostics, raw accounts and local release materials
+*.apk
+*.aab
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+/backups/
+/dbcopy/
+/tmp-*/
+/.playwright-mcp/
+/.workbuddy/
+/phone-*
+/window-*
+/timetable-debug*
+/installed-*
+/李跳跳（规则整合包）/
+/gkd最新规则.txt

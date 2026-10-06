@@ -1,0 +1,16 @@
+[
+  {
+    "layer": "original",
+    "tiles": 1035,
+    "pngBytes": 5587880,
+    "webpBytes": 4464160,
+    "pixelIdentical": true
+  },
+  {
+    "layer": "clean",
+    "tiles": 1035,
+    "pngBytes": 10997859,
+    "webpBytes": 5352670,
+    "pixelIdentical": true
+  }
+]

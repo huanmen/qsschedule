@@ -1,0 +1,11 @@
+.app-mode .workspace{height:100vh}
+.app-mode .sidebar>header{display:none}
+.app-mode:not(.editing) #edit-panel,.app-mode:not(.editing) #road-editor,.app-mode:not(.editing) #region-editor{display:none}
+.app-mode:not(.editing) #edit-selected{display:none}
+.app-controls{display:flex;gap:6px;padding:10px 14px;background:#fff;flex-wrap:wrap}
+.app-controls button{font-size:13px;min-height:32px;padding:5px 9px}
+#app-status{padding:0 14px 8px;white-space:pre-wrap}
+#app-status:empty{display:none}
+.app-mode .sidebar section{padding:10px 14px}
+.app-mode .result-list{max-height:120px}
+@media(max-width:700px){.app-mode .sidebar{height:38vh;min-height:180px;max-height:380px}.app-mode #map{min-height:220px}}

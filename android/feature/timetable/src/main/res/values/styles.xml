@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.QztcTimetable.DatePicker" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#FFFFFFFF</item>
+        <item name="android:colorAccent">#FF0E8A7B</item>
+        <item name="android:navigationBarColor">#FFF2F5F4</item>
+        <item name="android:textColorPrimary">#FF1E3A34</item>
+        <item name="android:textColorSecondary">#FF5F7A72</item>
+    </style>
+</resources>

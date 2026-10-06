@@ -1,0 +1,1346 @@
+{
+  "version": 6,
+  "updatedAt": "2026-09-09T17:38:46.831Z",
+  "places": [
+    {
+      "id": "qnu-main-entrance",
+      "name": "东海校区大门",
+      "aliases": [
+        "校门",
+        "泉州师范学院",
+        "正门"
+      ],
+      "category": "entrance",
+      "latitude": 24.867056,
+      "longitude": 118.6626915,
+      "note": "东海校区主要入口",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-east-gate",
+      "name": "东门",
+      "aliases": [
+        "东侧门"
+      ],
+      "category": "entrance",
+      "latitude": 24.8708996,
+      "longitude": 118.6673956,
+      "note": "东侧出入口",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-chaoyang",
+      "name": "朝阳楼",
+      "aliases": [
+        "朝阳",
+        "黄朝阳教学楼"
+      ],
+      "category": "building",
+      "latitude": 24.868475,
+      "longitude": 118.663016,
+      "note": "教学楼；例如朝阳404可搜索朝阳楼后再看教室号",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-baolong",
+      "name": "宝龙实验楼",
+      "aliases": [
+        "实验楼",
+        "实验楼A"
+      ],
+      "category": "building",
+      "latitude": 24.8717215,
+      "longitude": 118.6680167,
+      "note": "实验教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-wangaiyue",
+      "name": "王爱约实验楼",
+      "aliases": [
+        "王爱约楼"
+      ],
+      "category": "building",
+      "latitude": 24.8726488,
+      "longitude": 118.6676949,
+      "note": "实验教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-ligong",
+      "name": "理工学院",
+      "aliases": [
+        "慈山楼",
+        "慈山"
+      ],
+      "category": "building",
+      "latitude": 24.8711771,
+      "longitude": 118.6684517,
+      "note": "理工学院教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-zhongshan",
+      "name": "中山广场",
+      "aliases": [
+        "求是路",
+        "行知路"
+      ],
+      "category": "landmark",
+      "latitude": 24.8687077,
+      "longitude": 118.6638441,
+      "note": "校内公共空间",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-wenke",
+      "name": "文科楼",
+      "aliases": [
+        "文科楼A栋"
+      ],
+      "category": "building",
+      "latitude": 24.8693002,
+      "longitude": 118.6628959,
+      "note": "文科教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-rongmao",
+      "name": "荣茂楼",
+      "aliases": [
+        "荣茂",
+        "荣茂综合楼"
+      ],
+      "category": "building",
+      "latitude": 24.8681494,
+      "longitude": 118.6634778,
+      "note": "教学与办公区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-qianshu",
+      "name": "千墅楼",
+      "aliases": [
+        "千墅",
+        "苏千墅",
+        "苏千墅教学楼"
+      ],
+      "category": "building",
+      "latitude": 24.8679521,
+      "longitude": 118.6640736,
+      "note": "教学楼；例如千墅201可搜索千墅楼后再看教室号",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-chenghui",
+      "name": "呈辉演播大楼",
+      "aliases": [
+        "呈辉"
+      ],
+      "category": "building",
+      "latitude": 24.8687999,
+      "longitude": 118.6625536,
+      "note": "演播与教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-nanyi",
+      "name": "南益行政大楼",
+      "aliases": [
+        "南益",
+        "行政楼"
+      ],
+      "category": "building",
+      "latitude": 24.8684089,
+      "longitude": 118.6646493,
+      "note": "行政办公区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-belltower",
+      "name": "陈明玉钟楼",
+      "aliases": [
+        "钟楼"
+      ],
+      "category": "landmark",
+      "latitude": 24.8687128,
+      "longitude": 118.6641973,
+      "note": "校内地标",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-sunyatsen",
+      "name": "孙中山纪念堂",
+      "aliases": [
+        "纪念堂"
+      ],
+      "category": "landmark",
+      "latitude": 24.8687345,
+      "longitude": 118.6632851,
+      "note": "校内公共空间",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-sports",
+      "name": "风雨操场",
+      "aliases": [
+        "操场",
+        "体育馆"
+      ],
+      "category": "landmark",
+      "latitude": 24.8686042,
+      "longitude": 118.6651225,
+      "note": "体育活动区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-education",
+      "name": "教育科学学院",
+      "aliases": [
+        "教育学院"
+      ],
+      "category": "building",
+      "latitude": 24.8672652,
+      "longitude": 118.6636725,
+      "note": "学院教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-special-edu",
+      "name": "特殊教育学院",
+      "aliases": [
+        "特教",
+        "特教大楼"
+      ],
+      "category": "building",
+      "latitude": 24.8670991,
+      "longitude": 118.6636046,
+      "note": "学院教学区域",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-north-junction",
+      "name": "明德路",
+      "aliases": [
+        "北侧路口"
+      ],
+      "category": "landmark",
+      "latitude": 24.8719233,
+      "longitude": 118.6680193,
+      "note": "校内道路节点",
+      "status": "published",
+      "source": "app-catalog",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-航海学院",
+      "name": "航海学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8708996,
+      "longitude": 118.6673956,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-外国语学院",
+      "name": "外国语学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8757191,
+      "longitude": 118.6647218,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-俊秀文学院",
+      "name": "俊秀文学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8760429,
+      "longitude": 118.6650737,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-应用技术学院",
+      "name": "应用技术学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8710928,
+      "longitude": 118.6683387,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-体育学院",
+      "name": "体育学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8691661,
+      "longitude": 118.66176,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-学生公寓",
+      "name": "主校区学生公寓",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8737015,
+      "longitude": 118.6662438,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-物理与信息工程学院",
+      "name": "物理与信息工程学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8709583,
+      "longitude": 118.6680882,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-停车场",
+      "name": "停车场",
+      "aliases": [],
+      "category": "service",
+      "latitude": 24.8686042,
+      "longitude": 118.6651225,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-纺织与服装学院",
+      "name": "纺织与服装学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8721969,
+      "longitude": 118.6687428,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-陈守仁工商信息学院",
+      "name": "陈守仁工商信息学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8694716,
+      "longitude": 118.663581,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-雕刻学院",
+      "name": "雕刻学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8762801,
+      "longitude": 118.6646439,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-档案馆",
+      "name": "档案馆",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8700809,
+      "longitude": 118.6676021,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-第二餐厅",
+      "name": "第二餐厅",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8712809,
+      "longitude": 118.6635535,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-陈祖昌大礼堂",
+      "name": "陈祖昌大礼堂",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8687381,
+      "longitude": 118.6653398,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-浅水湾大学生创新创业园",
+      "name": "浅水湾大学生创新创业园",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8738241,
+      "longitude": 118.6647027,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-光子技术研究中心",
+      "name": "光子技术研究中心",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8681494,
+      "longitude": 118.6634778,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-陈伟利体育馆",
+      "name": "陈伟利体育馆",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8690529,
+      "longitude": 118.6620676,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-明德体育馆",
+      "name": "明德体育馆",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8732648,
+      "longitude": 118.6697515,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-教工餐厅",
+      "name": "教工餐厅",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8712135,
+      "longitude": 118.6664186,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-俊秀图书馆",
+      "name": "俊秀图书馆",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8696276,
+      "longitude": 118.6669926,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-音乐与舞蹈学院",
+      "name": "音乐与舞蹈学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8671533,
+      "longitude": 118.6656712,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-数学与计算机科学学院",
+      "name": "数学与计算机科学学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8709334,
+      "longitude": 118.6680333,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-public-美术与设计学院",
+      "name": "美术与设计学院",
+      "aliases": [],
+      "category": "building",
+      "latitude": 24.8763142,
+      "longitude": 118.664593,
+      "note": "公开地点参考坐标，可在协作地图中继续校验和补充别称",
+      "status": "published",
+      "source": "public-poi-reference",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-1",
+      "name": "A区1号楼",
+      "aliases": [
+        "A区1号楼",
+        "A1",
+        "A区1",
+        "学生公寓A1"
+      ],
+      "category": "building",
+      "latitude": 24.8718398,
+      "longitude": 118.6640624,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-2",
+      "name": "A区2号楼",
+      "aliases": [
+        "A区2号楼",
+        "A2",
+        "A区2",
+        "学生公寓A2"
+      ],
+      "category": "building",
+      "latitude": 24.8719391,
+      "longitude": 118.6644286,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-3",
+      "name": "A区3号楼",
+      "aliases": [
+        "A区3号楼",
+        "A3",
+        "A区3",
+        "学生公寓A3"
+      ],
+      "category": "building",
+      "latitude": 24.8719424,
+      "longitude": 118.6648238,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-4",
+      "name": "A区4号楼",
+      "aliases": [
+        "A区4号楼",
+        "A4",
+        "A区4",
+        "学生公寓A4"
+      ],
+      "category": "building",
+      "latitude": 24.8718005,
+      "longitude": 118.6653009,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-5",
+      "name": "A区5号楼",
+      "aliases": [
+        "A区5号楼",
+        "A5",
+        "A区5",
+        "学生公寓A5"
+      ],
+      "category": "building",
+      "latitude": 24.8716528,
+      "longitude": 118.6656891,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-6",
+      "name": "A区6号楼",
+      "aliases": [
+        "A区6号楼",
+        "A6",
+        "A区6",
+        "学生公寓A6"
+      ],
+      "category": "building",
+      "latitude": 24.8716957,
+      "longitude": 118.666232,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-11",
+      "name": "A区11号楼",
+      "aliases": [
+        "A区11号楼",
+        "A11",
+        "A区11",
+        "学生公寓A11"
+      ],
+      "category": "building",
+      "latitude": 24.871282,
+      "longitude": 118.6656143,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-12",
+      "name": "A区12号楼",
+      "aliases": [
+        "A区12号楼",
+        "A12",
+        "A区12",
+        "学生公寓A12"
+      ],
+      "category": "building",
+      "latitude": 24.8722384,
+      "longitude": 118.6668906,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-4",
+      "name": "B区4号楼",
+      "aliases": [
+        "B区4号楼",
+        "B4",
+        "B区4",
+        "学生公寓B4"
+      ],
+      "category": "building",
+      "latitude": 24.8737414,
+      "longitude": 118.6657189,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-5",
+      "name": "B区5号楼",
+      "aliases": [
+        "B区5号楼",
+        "B5",
+        "B区5",
+        "学生公寓B5"
+      ],
+      "category": "building",
+      "latitude": 24.8738247,
+      "longitude": 118.6661081,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-6",
+      "name": "B区6号楼",
+      "aliases": [
+        "B区6号楼",
+        "B6",
+        "B区6",
+        "学生公寓B6"
+      ],
+      "category": "building",
+      "latitude": 24.8725391,
+      "longitude": 118.6649076,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-3",
+      "name": "C区3号楼",
+      "aliases": [
+        "C区3号楼",
+        "C3",
+        "C区3",
+        "学生公寓C3"
+      ],
+      "category": "building",
+      "latitude": 24.874671,
+      "longitude": 118.6663924,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-4",
+      "name": "C区4号楼",
+      "aliases": [
+        "C区4号楼",
+        "C4",
+        "C区4",
+        "学生公寓C4"
+      ],
+      "category": "building",
+      "latitude": 24.8742173,
+      "longitude": 118.6668026,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-5",
+      "name": "C区5号楼",
+      "aliases": [
+        "C区5号楼",
+        "C5",
+        "C区5",
+        "学生公寓C5"
+      ],
+      "category": "building",
+      "latitude": 24.8744862,
+      "longitude": 118.6668355,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-11",
+      "name": "C区11号楼",
+      "aliases": [
+        "C区11号楼",
+        "C11",
+        "C区11",
+        "学生公寓C11"
+      ],
+      "category": "building",
+      "latitude": 24.8751344,
+      "longitude": 118.6666898,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-12",
+      "name": "C区12号楼",
+      "aliases": [
+        "C区12号楼",
+        "C12",
+        "C区12",
+        "学生公寓C12"
+      ],
+      "category": "building",
+      "latitude": 24.8753288,
+      "longitude": 118.6669882,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-13",
+      "name": "C区13号楼",
+      "aliases": [
+        "C区13号楼",
+        "C13",
+        "C区13",
+        "学生公寓C13"
+      ],
+      "category": "building",
+      "latitude": 24.8755534,
+      "longitude": 118.6671907,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-10",
+      "name": "A区10号楼",
+      "aliases": [
+        "A区10号楼",
+        "A10",
+        "A区10",
+        "学生公寓A10"
+      ],
+      "category": "building",
+      "latitude": 24.8713898,
+      "longitude": 118.6651582,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-7",
+      "name": "A区7号楼",
+      "aliases": [
+        "A区7号楼",
+        "A7",
+        "A区7",
+        "学生公寓A7"
+      ],
+      "category": "building",
+      "latitude": 24.8719351,
+      "longitude": 118.6665673,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-8",
+      "name": "A区8号楼",
+      "aliases": [
+        "A区8号楼",
+        "A8",
+        "A区8",
+        "学生公寓A8"
+      ],
+      "category": "building",
+      "latitude": 24.8715536,
+      "longitude": 118.6642251,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-a-9",
+      "name": "A区9号楼",
+      "aliases": [
+        "A区9号楼",
+        "A9",
+        "A区9",
+        "学生公寓A9"
+      ],
+      "category": "building",
+      "latitude": 24.8715307,
+      "longitude": 118.6646891,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-10",
+      "name": "B区10号楼",
+      "aliases": [
+        "B区10号楼",
+        "B10",
+        "B区10",
+        "学生公寓B10"
+      ],
+      "category": "building",
+      "latitude": 24.8737734,
+      "longitude": 118.6667897,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-1",
+      "name": "B区1号楼",
+      "aliases": [
+        "B区1号楼",
+        "B1",
+        "B区1",
+        "学生公寓B1"
+      ],
+      "category": "building",
+      "latitude": 24.8728496,
+      "longitude": 118.6646322,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-3",
+      "name": "B区3号楼",
+      "aliases": [
+        "B区3号楼",
+        "B3",
+        "B区3",
+        "学生公寓B3"
+      ],
+      "category": "building",
+      "latitude": 24.8735581,
+      "longitude": 118.6653986,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-7",
+      "name": "B区7号楼",
+      "aliases": [
+        "B区7号楼",
+        "B7",
+        "B区7",
+        "学生公寓B7"
+      ],
+      "category": "building",
+      "latitude": 24.8728303,
+      "longitude": 118.6653427,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-8",
+      "name": "B区8号楼",
+      "aliases": [
+        "B区8号楼",
+        "B8",
+        "B区8",
+        "学生公寓B8"
+      ],
+      "category": "building",
+      "latitude": 24.8731915,
+      "longitude": 118.6657499,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-9",
+      "name": "B区9号楼",
+      "aliases": [
+        "B区9号楼",
+        "B9",
+        "B区9",
+        "学生公寓B9"
+      ],
+      "category": "building",
+      "latitude": 24.8734477,
+      "longitude": 118.6661151,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-10",
+      "name": "C区10号楼",
+      "aliases": [
+        "C区10号楼",
+        "C10",
+        "C区10",
+        "学生公寓C10"
+      ],
+      "category": "building",
+      "latitude": 24.8750113,
+      "longitude": 118.6662427,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-14",
+      "name": "C区14号楼",
+      "aliases": [
+        "C区14号楼",
+        "C14",
+        "C区14",
+        "学生公寓C14"
+      ],
+      "category": "building",
+      "latitude": 24.8757065,
+      "longitude": 118.6676358,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-1",
+      "name": "C区1号楼",
+      "aliases": [
+        "C区1号楼",
+        "C1",
+        "C区1",
+        "学生公寓C1"
+      ],
+      "category": "building",
+      "latitude": 24.8742473,
+      "longitude": 118.6657638,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-2",
+      "name": "C区2号楼",
+      "aliases": [
+        "C区2号楼",
+        "C2",
+        "C区2",
+        "学生公寓C2"
+      ],
+      "category": "building",
+      "latitude": 24.8744639,
+      "longitude": 118.6659354,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-6",
+      "name": "C区6号楼",
+      "aliases": [
+        "C区6号楼",
+        "C6",
+        "C区6",
+        "学生公寓C6"
+      ],
+      "category": "building",
+      "latitude": 24.8746681,
+      "longitude": 118.6673964,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-7",
+      "name": "C区7号楼",
+      "aliases": [
+        "C区7号楼",
+        "C7",
+        "C区7",
+        "学生公寓C7"
+      ],
+      "category": "building",
+      "latitude": 24.875024,
+      "longitude": 118.6674552,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-9",
+      "name": "C区9号楼",
+      "aliases": [
+        "C区9号楼",
+        "C9",
+        "C区9",
+        "学生公寓C9"
+      ],
+      "category": "building",
+      "latitude": 24.875299,
+      "longitude": 118.6684711,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-b-2",
+      "name": "B区2号楼",
+      "aliases": [
+        "B区2号楼",
+        "B2",
+        "B区2",
+        "学生公寓B2"
+      ],
+      "category": "building",
+      "latitude": 24.8730919,
+      "longitude": 118.6650094,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-8",
+      "name": "C区8号楼",
+      "aliases": [
+        "C区8号楼",
+        "C8",
+        "C区8",
+        "学生公寓C8"
+      ],
+      "category": "building",
+      "latitude": 24.8752943,
+      "longitude": 118.6677885,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-15",
+      "name": "C区15号楼",
+      "aliases": [
+        "C区15号楼",
+        "C15",
+        "C区15",
+        "学生公寓C15"
+      ],
+      "category": "building",
+      "latitude": 24.8755643,
+      "longitude": 118.6683144,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-16",
+      "name": "C区16号楼",
+      "aliases": [
+        "C区16号楼",
+        "C16",
+        "C区16",
+        "学生公寓C16"
+      ],
+      "category": "building",
+      "latitude": 24.8758535,
+      "longitude": 118.6681827,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-c-17",
+      "name": "C区17号楼",
+      "aliases": [
+        "C区17号楼",
+        "C17",
+        "C区17",
+        "学生公寓C17"
+      ],
+      "category": "building",
+      "latitude": 24.8761017,
+      "longitude": 118.66803,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-d-life",
+      "name": "D区学生生活楼",
+      "aliases": [
+        "D区学生生活楼",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D区1号楼",
+        "D区2号楼",
+        "D区3号楼",
+        "D区4号楼",
+        "D区",
+        "学生生活楼",
+        "D区生活楼"
+      ],
+      "category": "building",
+      "latitude": 24.8746148,
+      "longitude": 118.6686448,
+      "isDormitory": true,
+      "note": "学生公寓独立楼栋；坐标由公开地点提示核验，可继续补充宿舍入口和别称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-d-1",
+      "name": "D区1号楼",
+      "aliases": [
+        "D区1号楼",
+        "D1",
+        "D区1",
+        "学生公寓D1"
+      ],
+      "category": "building",
+      "latitude": 24.8744158,
+      "longitude": 118.6685458,
+      "isDormitory": true,
+      "note": "D区1—4号楼按公开生活楼位置就近排列；高德目前只收录整栋生活楼名称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-d-2",
+      "name": "D区2号楼",
+      "aliases": [
+        "D区2号楼",
+        "D2",
+        "D区2",
+        "学生公寓D2"
+      ],
+      "category": "building",
+      "latitude": 24.8744158,
+      "longitude": 118.6687834,
+      "isDormitory": true,
+      "note": "D区1—4号楼按公开生活楼位置就近排列；高德目前只收录整栋生活楼名称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-d-3",
+      "name": "D区3号楼",
+      "aliases": [
+        "D区3号楼",
+        "D3",
+        "D区3",
+        "学生公寓D3"
+      ],
+      "category": "building",
+      "latitude": 24.8746872,
+      "longitude": 118.6685458,
+      "isDormitory": true,
+      "note": "D区1—4号楼按公开生活楼位置就近排列；高德目前只收录整栋生活楼名称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    },
+    {
+      "id": "qnu-dorm-d-4",
+      "name": "D区4号楼",
+      "aliases": [
+        "D区4号楼",
+        "D4",
+        "D区4",
+        "学生公寓D4"
+      ],
+      "category": "building",
+      "latitude": 24.8748681,
+      "longitude": 118.6687834,
+      "isDormitory": true,
+      "note": "D区1—4号楼按公开生活楼位置就近排列；高德目前只收录整栋生活楼名称",
+      "status": "published",
+      "source": "amap-public-inputtips",
+      "coordinateSystem": "WGS84"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_glass_course_row" android:layout_width="match_parent" android:layout_height="64dp">
+    <ImageView android:id="@+id/widget_glass_course_background" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_today_glass_course_background" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="horizontal"
+    android:paddingStart="10dp" android:paddingEnd="10dp" android:paddingTop="4dp" android:paddingBottom="4dp">
+    <LinearLayout android:layout_width="48dp" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_glass_course_period" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="1"
+            android:textColor="#365F8A" android:textSize="9sp" />
+        <TextView android:id="@+id/widget_glass_course_start" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="1"
+            android:textColor="#20344B" android:textSize="12sp" />
+        <TextView android:id="@+id/widget_glass_course_end" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="1dp" android:includeFontPadding="false" android:maxLines="1"
+            android:textColor="#63798E" android:textSize="9sp" />
+    </LinearLayout>
+    <ImageView android:id="@+id/widget_glass_course_divider" android:layout_width="4dp" android:layout_height="match_parent"
+        android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:scaleType="fitXY"
+        android:background="#365F8A" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp"
+        android:layout_weight="1" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_glass_course_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.58"
+                android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="6" android:ellipsize="end"
+                android:textColor="#20344B" android:textSize="12sp" />
+            <TextView android:id="@+id/widget_glass_course_reminder" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.42"
+                android:layout_marginStart="6dp" android:includeFontPadding="false" android:maxLines="6" android:ellipsize="end"
+                android:textColor="#365F8A" android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_glass_course_room" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" android:textColor="#63798E" android:textSize="10sp" />
+            <TextView android:id="@+id/widget_glass_course_badge" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="3dp" android:includeFontPadding="false" android:maxLines="1" android:textColor="#365F8A" android:textSize="9sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
+</FrameLayout>

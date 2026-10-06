@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>泉师地图 · 离线校园地图</title>
+<link rel="stylesheet" href="./leaflet.css">
+<link rel="stylesheet" href="./map.css">
+</head>
+<body>
+<div class="workspace">
+<aside class="sidebar" aria-label="地点和路线">
+<header><h1>泉师地图</h1><p class="subtitle">东海校区 · 离线地图</p></header>
+<section>
+<h2>地点</h2>
+<input id="campus-search" type="search" aria-label="搜索校园地点" placeholder="搜索建筑、食堂或别称" autocomplete="off">
+<div class="result-list" id="campus-results" aria-label="搜索结果"></div>
+</section>
+<section id="selected-panel" hidden>
+<div class="place-title" id="selected-name"></div><p id="selected-note" class="meta"></p>
+<div class="selection-actions"><button id="set-start">设为起点</button><button id="set-end">设为终点</button><button id="edit-selected" class="secondary-button">编辑</button></div>
+</section>
+<section id="edit-panel">
+<h2>地点编辑</h2>
+<p class="meta" id="edit-help">进入编辑模式后，移动鼠标预览位置，右键确认；左键仍用于拖动地图。</p>
+<div class="tool-row"><button id="edit-mode">编辑模式</button><button id="new-place" class="secondary-button">新建标记</button></div>
+<div id="edit-form" hidden>
+<label class="field-label" for="edit-name">名称</label><input id="edit-name" type="text" maxlength="80">
+<label class="field-label" for="edit-aliases">别名</label><input id="edit-aliases" type="text" placeholder="多个别名用逗号分隔">
+<label class="field-label" for="edit-tag-input">标签</label><div id="edit-tags" class="tag-list" aria-live="polite"></div><div id="tag-options" class="tag-options" aria-label="可复用标签"></div><div class="tag-input-row"><input id="edit-tag-input" type="text" maxlength="40" placeholder="输入后按回车添加"><button id="add-tag" type="button">添加</button></div>
+<label class="field-label">标记颜色</label><div class="color-options" id="color-options"><label><input type="radio" name="edit-color" value="#1675db"><span style="--swatch:#1675db">蓝</span></label><label><input type="radio" name="edit-color" value="#15866a"><span style="--swatch:#15866a">绿</span></label><label><input type="radio" name="edit-color" value="#ba7415"><span style="--swatch:#ba7415">橙</span></label><label><input type="radio" name="edit-color" value="#8b5fbf"><span style="--swatch:#8b5fbf">紫</span></label><label><input type="radio" name="edit-color" value="#d13b5b"><span style="--swatch:#d13b5b">红</span></label><label class="custom-color"><span>自定义</span><input id="edit-custom-color" type="color" value="#1675db"></label></div>
+<p class="meta" id="edit-position">位置：未设置</p>
+<div class="selection-actions"><button id="save-place">保存修改</button><button id="cancel-edit" class="secondary-button">取消</button><button id="delete-place" class="danger-button">删除地点</button></div>
+<div id="delete-confirm" class="inline-confirm" hidden><span>确认删除此地点？</span><button id="confirm-delete" class="danger-button" type="button">确认删除</button><button id="cancel-delete" class="secondary-button" type="button">返回</button></div>
+</div>
+<div class="tool-row"><button id="export-edits" class="secondary-button">导出编辑</button><button id="import-edits" class="secondary-button">导入编辑</button><input id="import-file" type="file" accept="application/json" hidden></div>
+</section>
+<section id="road-editor">
+<h2>道路画笔</h2>
+<div class="tool-row"><button id="draw-road" type="button" title="从现有道路开始绘制">画路线</button><button id="undo-road-point" class="secondary-button" type="button" disabled title="撤销上一个拐点">撤销点</button></div>
+<div class="tool-row"><button id="save-road" type="button" disabled>保存路线</button><button id="cancel-road" class="secondary-button" type="button" disabled>取消</button></div>
+<p id="road-edit-status" class="meta" role="status" aria-live="polite"></p>
+<div id="saved-roads" class="saved-roads" aria-label="新增路线"></div>
+</section>
+<section id="region-editor">
+<h2>圈选修改区域</h2>
+<div class="tool-row"><button id="draw-region" type="button" title="在地图上圈出需要修改的区域">圈选区域</button><button id="undo-region-point" class="secondary-button" type="button" disabled>撤销点</button></div>
+<div id="region-form" hidden>
+<label class="field-label" for="region-name">区域名称</label><input id="region-name" type="text" maxlength="80" placeholder="例如：B区两侧宿舍之间">
+<label class="field-label" for="region-instruction">修改说明</label><textarea id="region-instruction" maxlength="2000" rows="4" placeholder="说明希望如何修改这里"></textarea>
+</div>
+<div class="tool-row"><button id="save-region" type="button" disabled>保存区域</button><button id="cancel-region" class="secondary-button" type="button" disabled>取消</button></div>
+<p id="region-edit-status" class="meta" role="status" aria-live="polite"></p>
+<div id="saved-regions" class="saved-regions" aria-label="已保存的修改区域"></div>
+</section>
+<section>
+<h2>步行路线</h2>
+<label class="route-row"><span>起点</span><select id="route-start" aria-label="路线起点"></select></label>
+<label class="route-row"><span>终点</span><select id="route-end" aria-label="路线终点"></select></label>
+<div id="route-status" role="status" aria-live="polite">选择起点和终点</div>
+<p class="meta" id="route-note"></p>
+<div class="tool-row"><button id="fit-route" disabled>查看路线</button><button id="campus-clear-route">清除</button></div>
+<div class="tool-row"><button id="route-adjust-start" type="button">调整路线</button><button id="route-adjust-save" type="button" disabled>保存调整</button><button id="route-adjust-cancel" class="secondary-button" type="button" disabled>取消</button></div>
+<p id="route-adjust-status" class="meta" role="status" aria-live="polite"></p>
+</section>
+<section>
+<h2>地图显示</h2>
+<div class="toggle-row"><label><input id="original" type="checkbox">原图对照</label><label><input id="roads" type="checkbox" checked>白路路网</label></div>
+<div class="toggle-row"><label><input id="labels" type="checkbox" checked>地点名称</label><label><input id="pending" type="checkbox">待核对地点</label></div>
+<div class="toggle-row"><label><input id="show-region-frames" type="checkbox">显示圈选框</label></div>
+<div class="tool-row"><button id="fit-campus">校区全览</button><span id="level-status" class="meta"></span></div>
+</section>
+<section><details><summary>数据核对</summary><p id="data-count" class="meta"></p><a class="review-link" href="./qa/marker-audit.html" target="_blank" rel="noopener">地点与原图对照记录</a></details></section>
+</aside>
+<main id="map" aria-label="校园地图"></main>
+</div>
+<script src="./leaflet.js"></script>
+<script src="./vendor/leaflet-rotate/leaflet-rotate.js"></script>
+<script src="./data/tile-manifest-cropped.js"></script>
+<script src="./data/tile-config.js"></script>
+<script src="./data/map-runtime.js"></script>
+<script src="./data/task-annotations.js"></script>
+<script src="./data/campus-layout.js"></script>
+<script src="./data/campus-layer.js"></script>
+<script src="./vendor/package/dijkstra.js"></script>
+<script src="./data/place-store.js"></script>
+<script src="./data/initial-edits.js"></script>
+<script src="./data/road-router.js"></script>
+<script src="./data/map-editor.js"></script>
+</body>
+</html>
