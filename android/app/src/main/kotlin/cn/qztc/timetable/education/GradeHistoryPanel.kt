@@ -180,7 +180,14 @@ private fun GradeHistoryRow(record: QnuGradeRecord) {
     }
     if (detailsOpen) {
         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = colors.line)
-        val fields = listOf("课程性质" to record.selection, "考核方式" to record.assessment, "考试性质" to record.examType, "结果" to record.status)
+        val order = listOf("平时", "期中", "期末", "实验", "口语", "过程性成绩", "总评", "绩点", "学分", "学时", "学年", "学期", "开课院系", "课程号", "课程名", "课序号", "课组", "考核方式", "选课属性", "备注", "考试性质", "是否缓考", "及格标志")
+        val fields = if (record.officialFields.isNotEmpty()) {
+            (order.filter { it in record.officialFields } + record.officialFields.keys.filterNot { it in order })
+                .map { it to record.officialFields[it]?.takeIf(String::isNotBlank) }
+        } else listOf("学年" to record.year, "学期" to record.term, "课程号" to record.courseCode,
+            "课序号" to record.courseSequence, "选课属性" to record.selection, "考核方式" to record.assessment,
+            "考试性质" to record.examType, "及格标志" to record.status)
+        if (record.officialFields.isEmpty()) Text("此缓存尚未包含完整字段，请刷新成绩补全", style = QztcTypography.compact, color = colors.mut)
         fields.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { (label, value) -> Column(Modifier.weight(1f)) {

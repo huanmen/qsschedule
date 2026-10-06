@@ -94,6 +94,7 @@ data class QnuGradeRecord(
     val term: String? = null,
     val examType: String? = null,
     val courseSequence: String? = null,
+    val officialFields: Map<String, String> = emptyMap(),
 )
 
 data class QnuEvaluationTask(

@@ -46,6 +46,7 @@ object QnuAcademicParser {
                     indexes.value("status", cells),
                     indexes.value("year", cells), indexes.value("term", cells),
                     indexes.value("examType", cells), indexes.value("sequence", cells),
+                    header.mapIndexed { i, label -> label to cells[i] }.filter { it.first.isNotBlank() }.toMap(),
                 )
             }.filterNot { it.courseName in setOf("课程名", "课程名称") }
         }.orEmpty()

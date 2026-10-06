@@ -36,7 +36,8 @@ internal class GradeCache(context: Context) {
             val r = rows.getJSONObject(i)
             fun field(name: String) = if (r.isNull(name)) null else r.getString(name)
             QnuGradeRecord(field("code"), r.getString("name"), field("score"), field("gpa"), field("credits"),
-                field("assessment"), field("selection"), field("status"), field("year"), field("term"), field("exam"), field("sequence"))
+                field("assessment"), field("selection"), field("status"), field("year"), field("term"), field("exam"), field("sequence"),
+                r.optJSONObject("officialFields")?.let { fields -> fields.keys().asSequence().associateWith { fields.getString(it) } }.orEmpty())
         }, json.getLong("updatedAt"))
     }.getOrNull()
 
@@ -46,6 +47,7 @@ internal class GradeCache(context: Context) {
             put("name", r.courseName); put("code", r.courseCode); put("score", r.score); put("gpa", r.gpa)
             put("credits", r.credits); put("assessment", r.assessment); put("selection", r.selection); put("status", r.status)
             put("year", r.year); put("term", r.term); put("exam", r.examType); put("sequence", r.courseSequence)
+            put("officialFields", JSONObject(r.officialFields))
         }) }
         val json = JSONObject().put("version", 1).put("account", accountKey(account)).put("updatedAt", snapshot.updatedAt).put("records", records)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
