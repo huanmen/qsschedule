@@ -120,6 +120,8 @@ fun AdSkipScreen(onBack: () -> Unit) {
             AdSkipToggle("底部提示", Icons.Outlined.Notifications, AdSkipStore.feedbackEnabled(context)) { AdSkipStore.setFeedback(context, it) }
             AdSkipDivider()
             AdSkipToggle("持续后台运行", Icons.Outlined.BatteryChargingFull, AdSkipStore.foregroundEnabled(context)) { AdSkipStore.setForeground(context, it) }
+            AdSkipDivider()
+            AdSkipToggle("仅处理开屏广告", Icons.Outlined.Timer, AdSkipStore.splashOnly(context)) { AdSkipStore.setSplashOnly(context, it) }
         }
         AdSkipRuleList()
         message?.let { Text(it, color = colors.mut, style = QztcTypography.meta) }

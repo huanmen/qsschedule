@@ -26,6 +26,42 @@ class AdSkipGenericRulesTest {
     @Test fun descriptionCanIdentifySkipWithoutText() {
         assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(root, target(null, description = "跳过广告"))))
     }
+    @Test fun closesMarkedPopupAndAccessibleWebAd() {
+        val popup = AdSkipNode(pkg + ":id/ad_popup", null, true, true, false, 0,
+            bounds = AdSkipBounds(90, 420, 990, 1700), packageName = pkg)
+        val ad = AdSkipNode(null, "广告", true, true, false, 1,
+            bounds = AdSkipBounds(850, 1610, 940, 1650), packageName = pkg)
+        val close = AdSkipNode(null, "×", true, true, true, 1,
+            bounds = AdSkipBounds(880, 445, 940, 505), packageName = pkg)
+        assertEquals(3, AdSkipMatcher.findTarget(rule, listOf(root, popup, ad, close)))
+        val web = popup.copy(id = null, className = "android.webkit.WebView")
+        assertEquals(3, AdSkipMatcher.findTarget(rule, listOf(root, web, ad, close)))
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(root,
+            target(null, description = "Close advertisement").copy(bounds = AdSkipBounds(700, 900, 800, 980)))))
+    }
+    @Test fun doesNotCloseOrdinaryDialogOrAdLandingLink() {
+        val dialog = AdSkipNode(pkg + ":id/header", null, true, true, false, 0,
+            bounds = AdSkipBounds(90, 420, 990, 1700), packageName = pkg)
+        val close = AdSkipNode(null, "×", true, true, true, 1,
+            bounds = AdSkipBounds(880, 445, 940, 505), packageName = pkg)
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(root, dialog, close)))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(root, dialog, close.copy(text = "立即查看"),
+            AdSkipNode(null, "广告", true, true, false, 1, bounds = AdSkipBounds(850, 1610, 940, 1650), packageName = pkg))))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(root, dialog, close.copy(bounds = AdSkipBounds(200, 900, 260, 960)),
+            AdSkipNode(null, "广告", true, true, false, 1, bounds = AdSkipBounds(850, 1610, 940, 1650), packageName = pkg))))
+    }
+    @Test fun movingCloseMustRemainUniqueAndInsideMarkedAd() {
+        val popup = AdSkipNode(pkg + ":id/ad_popup", null, true, true, false, 0,
+            bounds = AdSkipBounds(90, 420, 990, 1700), packageName = pkg)
+        val close = AdSkipNode(null, "×", true, true, true, 1,
+            bounds = AdSkipBounds(880, 445, 940, 505), packageName = pkg)
+        val marker = AdSkipNode(null, "广告", true, true, false, 1,
+            bounds = AdSkipBounds(850, 1610, 940, 1650), packageName = pkg)
+        val moved = close.copy(bounds = AdSkipBounds(840, 445, 900, 505))
+        assertTrue(AdSkipGenericRules.relocatedTarget(rule, close, listOf(root, popup, marker, moved), 3))
+        assertFalse(AdSkipGenericRules.relocatedTarget(rule, close, listOf(root, popup, marker, moved, close), 3))
+        assertFalse(AdSkipGenericRules.relocatedTarget(rule, close, listOf(root, popup.copy(id = null), moved), 2))
+    }
     @Test fun excludesForeignHiddenDisabledAndOversizedControls() {
         val valid = target("跳过广告")
         listOf(valid.copy(packageName = "other.app"), valid.copy(visible = false), valid.copy(enabled = false),
@@ -33,6 +69,21 @@ class AdSkipGenericRulesTest {
             valid.copy(bounds = AdSkipBounds(1000, 100, 1200, 200))).forEach {
             assertNull(AdSkipMatcher.findTarget(rule, listOf(root, it)))
         }
+    }
+    @Test fun supportsImageCloseWithClickableParentForInterstitial() {
+        val ad = AdSkipNode(null, null, true, true, false, 0,
+            className = "android.widget.ImageView", bounds = AdSkipBounds(120, 420, 960, 1500), packageName = pkg)
+        val parent = AdSkipNode(null, null, true, true, true, 0,
+            className = "android.widget.FrameLayout", bounds = AdSkipBounds(500, 1600, 630, 1730), packageName = pkg)
+        val close = AdSkipNode(null, null, true, true, false, 2,
+            className = "android.widget.ImageView", bounds = AdSkipBounds(500, 1600, 630, 1730), packageName = pkg)
+        assertEquals(3, AdSkipMatcher.findTarget(rule, listOf(root, ad, parent, close)))
+        assertEquals(listOf(2), AdSkipMatcher.clickCandidates(rule, listOf(root, ad, parent, close), 3))
+    }
+    @Test fun supportsCanvasSplashContainerAsLastResortTarget() {
+        val splash = AdSkipNode(pkg + ":id/splash_ad_container", null, true, true, false, 0,
+            className = "android.widget.FrameLayout", bounds = AdSkipBounds(0, 0, 1080, 2200), packageName = pkg)
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(root, splash)))
     }
     @Test fun untrustedFilesCannotOverrideGlobalRule() {
         assertThrows(IllegalArgumentException::class.java) {

@@ -159,7 +159,7 @@ object AdSkipRules {
             }
             require(rule.textPrefix == null || rule.textPrefix == "跳过") { "旧格式只支持明确的跳过文案" }
             require(rule.targetId != null || rule.selectors.isNotEmpty()) { "缺少目标条件" }
-            require(rule.action in setOf("click", "clickNode", "clickCenter", "back", "none")) { "不支持的动作" }
+            require(rule.action in setOf("click", "clickNode", "clickCenter", "splashEdge", "back", "none")) { "不支持的动作" }
             require(rule.actionMaximum in 0..20 && rule.preKeys.isEmpty()) { "不支持前置动作，不能忽略后执行" }
             if (rule.targetId != null) require(rule.textPrefix != null || rule.ancestorId != null) { "关闭按钮必须限定广告文案或广告容器" }
             require(rule.selectors.size <= 16 && rule.requiredSelectors.size <= 8 && rule.requiredSelectors.all { it.size in 1..16 }) { "候选条件过多" }
@@ -300,7 +300,10 @@ object AdSkipMatcher {
     }
 
     fun clickTarget(rule: AdSkipRule, nodes: List<AdSkipNode>, target: Int): Int? {
-        val index = if (rule.clickParentId == null) target else nodes.getOrNull(target)?.parent ?: return null
+        val index = if (rule.clickParentId != null) nodes.getOrNull(target)?.parent ?: return null
+            else if (rule.id == AdSkipGenericRules.ID && nodes.getOrNull(target)?.clickable != true &&
+                nodes.getOrNull(target)?.parent?.let(nodes::getOrNull)?.clickable == true) nodes[target].parent!!
+            else target
         val node = nodes.getOrNull(index) ?: return null
         if (rule.clickParentId != null && node.id != "${rule.packageName}:id/${rule.clickParentId}") return null
         if (rule.clickParentId != null) {

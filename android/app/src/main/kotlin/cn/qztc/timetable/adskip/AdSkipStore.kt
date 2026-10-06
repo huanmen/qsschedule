@@ -22,6 +22,15 @@ object AdSkipRuntime {
 data class AdSkipRecord(val timestamp: Long, val app: String, val rule: String, val result: String)
 
 object AdSkipStore {
+    private val browserPackages = setOf("com.android.chrome", "com.android.browser", "com.quark.browser")
+    private val defaultDisabledPackages = setOf(
+        "com.tencent.mobileqq", "com.tencent.qqmail", "com.tencent.mm",
+        "com.sankuai.meituan", "com.sankuai.meituan.takeoutnew", "com.jingdong.app.mall",
+        "com.taobao.taobao", "com.taobao.shopping", "com.baidu.searchbox",
+        "com.google.android.googlequicksearchbox", "com.ss.android.ugc.aweme.lite",
+        "com.deepseek.chat", "com.alibaba.qwen", "com.ss.android.ugc.aweme",
+        "com.alipay.android.app", "com.wanmei.wmclass", "com.dousheng.app"
+    )
     private const val NAME = "ad_skip"
     private const val MAX_RECORDS = 60
     private const val PACK = "local_pack_v1"
@@ -32,6 +41,8 @@ object AdSkipStore {
     fun enabled(context: Context): Boolean = installed(context) && prefs(context).getBoolean("enabled", false)
     fun feedbackEnabled(context: Context) = prefs(context).getBoolean("feedback", true)
     fun foregroundEnabled(context: Context) = prefs(context).getBoolean("foreground", true)
+    fun splashOnly(context: Context) = prefs(context).getBoolean("splash_only", true)
+    fun setSplashOnly(context: Context, value: Boolean) { prefs(context).edit().putBoolean("splash_only", value).apply() }
     fun pluginNeedsUpdate(context: Context, latest: Int = 2) = installed(context) && prefs(context).getInt("plugin_version", 1) < latest
     fun updatePlugin(context: Context, version: Int = 2) { prefs(context).edit().putInt("plugin_version", version).apply() }
     fun applicationExcluded(context: Context, packageName: String) = !prefs(context).getBoolean("app:" + packageName, true)
@@ -43,12 +54,21 @@ object AdSkipStore {
     }
 
     fun genericEnabled(context: Context) = installed(context) && prefs(context).getBoolean("rule:" + AdSkipGenericRules.ID, true)
-    fun appEnabled(context: Context, packageName: String): Boolean = installed(context) && AdSkipRules.supportedPackage(packageName) &&
+    fun appEnabled(context: Context, packageName: String): Boolean = installed(context) && packageName !in browserPackages && AdSkipRules.supportedPackage(packageName) &&
         (rules(context).any { it.packageName == packageName } || (genericEnabled(context) && packageName in AdSkipApplications.labels(context))) &&
-        prefs(context).getBoolean("app:$packageName", true)
+        prefs(context).getBoolean("app:$packageName", !defaultDisabled(context, packageName))
     fun setAppEnabled(context: Context, packageName: String, value: Boolean) {
         require(AdSkipRules.supportedPackage(packageName))
         prefs(context).edit().putBoolean("app:$packageName", value).apply()
+    }
+    private fun defaultDisabled(context: Context, packageName: String): Boolean {
+        if (packageName in defaultDisabledPackages || packageName.startsWith("com.android.") ||
+            packageName.startsWith("com.google.android.") || packageName.startsWith("com.miui.") ||
+            packageName.startsWith("com.xiaomi.")) return true
+        val info = runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.getOrNull() ?: return false
+        if (android.content.pm.ApplicationInfo.CATEGORY_GAME == info.category) return true
+        val label = runCatching { context.packageManager.getApplicationLabel(info).toString() }.getOrDefault("")
+        return label.contains(Regex("(?i)deepseek|qwen|千问|通义|豆包|ai|搜索|浏览器"))
     }
     @Synchronized
     fun localPack(context: Context): AdSkipRulePack? {

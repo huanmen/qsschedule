@@ -234,6 +234,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
         }
         val candidates = AdSkipStore.rulesFor(this, pkg).filter { rule ->
             rule.packageName == pkg && active(rule) && AdSkipMatcher.matchesActivity(rule, activity) &&
+                (rule.id != AdSkipGenericRules.ID || !AdSkipStore.splashOnly(this) || now - enteredAt <= 15000L) &&
                 (rule.matchWindowMs == 0L || now - enteredAt <= rule.matchWindowMs) &&
                 (lastAction[rule.runtimeKey()]?.let { now - it >= rule.cooldownMs } ?: true)
                 && (rule.actionMaximum == 0 || (actionCounts[rule.runtimeKey()] ?: 0) < rule.actionMaximum)
@@ -331,12 +332,19 @@ class AdSkipAccessibilityService : AccessibilityService() {
         if (root.packageName?.toString() != attempt.rule.packageName || root.windowId != attempt.windowId) { recycle(root); return false }
         // ACTION_CLICK may have changed the screen. Match again, never reuse old coordinates.
         val bounds = snapshot(root, budgetMs = 600).use { tree ->
-            val target = AdSkipMatcher.findTarget(attempt.rule, tree.nodes)?.let { tree.nodes[it] } ?: return false
-            if (!sameTarget(attempt.target, target)) return false
+            val targetIndex = AdSkipMatcher.findTarget(attempt.rule, tree.nodes) ?: return false
+            val target = tree.nodes[targetIndex]
+            if (!sameTarget(attempt.target, target) && !relocatedAdClose(attempt, tree.nodes, targetIndex)) return false
             val b = target.bounds ?: return false
             val screen = tree.nodes.firstOrNull()?.bounds ?: return false
-            if (!b.containedBy(screen) || b.width > screen.width / 2 || b.height > screen.height / 3) return false
-            b
+            if (!b.containedBy(screen)) return false
+            if (attempt.rule.id == AdSkipGenericRules.ID && target.id?.substringAfter(":id/") in setOf("splash_ad_container", "splash_container")) {
+                AdSkipBounds(screen.left + screen.width * 4 / 5, screen.top + screen.height / 20,
+                    screen.left + screen.width * 19 / 20, screen.top + screen.height / 7)
+            } else {
+                if (b.width > screen.width / 2 || b.height > screen.height / 3) return false
+                b
+            }
         }
         val path = Path().apply { moveTo((bounds.left + bounds.right) / 2f, (bounds.top + bounds.bottom) / 2f) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 40)).build()
@@ -401,11 +409,16 @@ class AdSkipAccessibilityService : AccessibilityService() {
             if (!AdSkipTiming.verificationTimely(attempt.startedAt, SystemClock.uptimeMillis())) {
                 finish(attempt, AdSkipResult.UNCONFIRMED); return
             }
-            val target = tree.nodes.indices.firstOrNull { tree.nodes[it].visible && sameControl(attempt.target, tree.nodes[it]) }
+            val target = if (attempt.rule.id == AdSkipGenericRules.ID)
+                AdSkipMatcher.findTarget(attempt.rule, tree.nodes)?.takeIf { i ->
+                    sameTarget(attempt.target, tree.nodes[i]) || relocatedAdClose(attempt, tree.nodes, i)
+                }
+            else tree.nodes.indices.firstOrNull { tree.nodes[it].visible && sameControl(attempt.target, tree.nodes[it]) }
             AdSkipTrace.verification(attempt.rule, "window=${tree.windowId} count=${tree.nodes.size} complete=${tree.complete} target=${target != null} scanMs=${tree.elapsedMs} activity=$activity elapsed=${SystemClock.uptimeMillis() - attempt.startedAt}")
             val confirmedAbsent = attempt.absence.observe(tree.windowId, tree.complete, target != null)
             if (target != null) {
-                if (!attempt.gestureTried && sameTarget(attempt.target, tree.nodes[target]) && gesture(attempt)) return
+                if (!attempt.gestureTried && (sameTarget(attempt.target, tree.nodes[target]) ||
+                    relocatedAdClose(attempt, tree.nodes, target)) && gesture(attempt)) return
                 if (++attempt.presentChecks < 3) { verifyLater(attempt); return }
                 finish(attempt, AdSkipResult.TARGET_PRESENT)
             } else if (!confirmedAbsent) verifyLater(attempt)
@@ -422,6 +435,12 @@ class AdSkipAccessibilityService : AccessibilityService() {
 
     private fun sameTarget(before: AdSkipNode, after: AdSkipNode) = before.id == after.id &&
         before.className == after.className && before.bounds == after.bounds && before.packageName == after.packageName
+
+    private fun relocatedAdClose(attempt: Attempt, nodes: List<AdSkipNode>, index: Int): Boolean {
+        if (attempt.rule.id != AdSkipGenericRules.ID) return false
+        // A unique fresh match keeps a moving close control tied to an ad container.
+        return AdSkipGenericRules.relocatedTarget(attempt.rule, attempt.target, nodes, index)
+    }
 
     private fun sameControl(before: AdSkipNode, after: AdSkipNode): Boolean = before.packageName == after.packageName &&
         before.className == after.className && (if (before.id != null) before.id == after.id else
@@ -451,7 +470,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
         AdSkipTrace.verification(attempt.rule, "result=${result.name} elapsed=${SystemClock.uptimeMillis() - attempt.startedAt}")
         AdSkipStore.record(this, attempt.rule, result)
         AdSkipStore.recordOutcome(this, attempt.rule, result)
-        AdSkipOutcome.label(result)?.let { announce(attempt.rule, "跳过" + it) }
+        // Only confirmed dismissals get user-facing feedback. Failed or
+        // unconfirmed probes stay in the in-app log without interrupting use.
+        if (AdSkipOutcome.label(result) == "成功") announce(attempt.rule, "跳过成功")
         startBurst()
     }
 
