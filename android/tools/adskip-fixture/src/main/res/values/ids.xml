@@ -1,0 +1,5 @@
+<resources>
+    <item name="ad_container" type="id" />
+    <item name="close_btn" type="id" />
+    <item name="fixture_status" type="id" />
+</resources>

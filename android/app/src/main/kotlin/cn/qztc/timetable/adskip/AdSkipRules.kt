@@ -189,7 +189,18 @@ object AdSkipRules {
                 val explicitImportedLabel = selector.labelMatches.any {
                     AdSkipRules.isSkipLabel(it.value) || it.value in setOf("关闭广告", "close ad")
                 }
-                require(selector.skipLabel || explicitAd || explicitImportedLabel || structuralClose || (selector.id != null && (selector.ancestorId != null || rule.activityNames.isNotEmpty())) || rule.action == "back") { "匹配须限定跳过文案或具体广告控件上下文" }
+                val importedAdContext = rule.requiredSelectors.flatten().any { required ->
+                    (listOfNotNull(required.id, required.text, required.textPrefix, required.textContains, required.description) +
+                        required.labelMatches.map { it.value }).any { value ->
+                        listOf("广告", "推广", "开屏", "弹窗", "banner", "splash", "interstitial", "native", "ksad", "gdt", "ad_", "_ad", "advert", "popup").any { marker -> value.contains(marker, true) }
+                    }
+                }
+                require(selector.skipLabel || explicitAd || explicitImportedLabel || structuralClose ||
+                    (rule.adapterVersion == 3 && importedAdContext && (
+                        selector.id?.contains(Regex("(?i)(close|dismiss|skip|cancel|ignore)")) == true ||
+                        selector.labelMatches.any { it.value.contains(Regex("(?i)(close|dismiss|skip|cancel|ignore|关闭|跳过|取消|不感兴趣)")) }
+                    )) ||
+                    (selector.id != null && (selector.ancestorId != null || rule.activityNames.isNotEmpty())) || rule.action == "back") { "匹配须限定跳过文案或具体广告控件上下文" }
             }
             require(rule.cooldownMs in 3000..60000 && (rule.matchWindowMs == 0L || rule.matchWindowMs in 1000..30000)) { "触发时间范围无效" }
         }

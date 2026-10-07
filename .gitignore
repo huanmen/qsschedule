@@ -23,6 +23,7 @@ captures/
 # Local prototype and verification artifacts
 .playwright-cli/
 output/
+output-*.log
 验证-*.png
 
 # Local tooling and OS files

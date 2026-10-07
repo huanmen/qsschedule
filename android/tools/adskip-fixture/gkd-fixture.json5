@@ -1,0 +1,23 @@
+{
+  id: 20261007,
+  name: '广告规则测试',
+  version: 1,
+  apps: [
+    {
+      id: 'org.example.adskipfixture',
+      name: '广告规则测试',
+      groups: [
+        {
+          key: 0,
+          name: '弹窗广告',
+          rules: [
+            {
+              matches: '[vid="ad_container"] + [vid="close_btn"]',
+              action: 'click',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}

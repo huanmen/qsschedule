@@ -82,8 +82,8 @@ class AdSkipAcceptanceTest {
             compose.onNodeWithText("运行日志").performScrollTo().performClick()
             compose.onNodeWithText("暂无日志").assertIsDisplayed()
             compose.onNodeWithContentDescription("返回").performClick()
-            compose.onNodeWithText("通用广告跳过").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithContentDescription("通用广告跳过").performScrollTo().performClick()
+            compose.onNodeWithText("内置规则").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("内置规则").performScrollTo().performClick()
             compose.runOnIdle { assertFalse(AdSkipStore.genericEnabled(context)) }
         } finally { AdSkipStore.prefs(context).edit().clear().commit() }
     }

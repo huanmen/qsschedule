@@ -64,13 +64,51 @@ class AdSkipImportSafetyTest {
     @Test fun lttAmpersandRequiresBothTermsOnTheSameNode() {
         val rule = ltt("+跳过&-广告")
         assertNull(AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "跳过"), n("TextView", text = "广告"))))
-        assertEquals(0, AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "跳过此广告"))))
-        assertNull(AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "广告在这里跳过"))))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "跳过此广告"))))
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "广告关闭"), n("TextView", text = "跳过此广告"))))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(n("TextView", text = "广告关闭"), n("TextView", text = "广告在这里跳过"))))
     }
 
     @Test fun lttLabelsCanMatchDescriptionsWithoutWeakeningEquality() {
         val rule = ltt("=跳过广告")
-        assertEquals(0, AdSkipMatcher.findTarget(rule, listOf(n("ImageView").copy(description = "跳过广告"))))
-        assertNull(AdSkipMatcher.findTarget(rule, listOf(n("ImageView").copy(description = "购买会员跳过广告"))))
+        val context = n("TextView", text = "广告关闭")
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(context, n("ImageView").copy(description = "跳过广告"))))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(context, n("ImageView").copy(description = "购买会员跳过广告"))))
+    }
+
+    @Test fun lttResourceIdsUseIdForTargetAndKeepAdContext() {
+        val config = buildJsonObject { put("popup_rules", buildJsonArray { add(buildJsonObject {
+            put("id", "ad_container"); put("action", "close_btn")
+        }) }) }
+        val source = buildJsonArray { add(buildJsonObject { put(pkg.hashCode().toString(), config.toString()) }) }
+        val preview = AdSkipImport.parse(source.toString(), mapOf(pkg to "示例应用"))
+        assertNotNull(preview.issues.joinToString(), preview.pack)
+        val rule = preview.pack!!.rules.single()
+        assertEquals("close_btn", rule.selectors.single().id)
+        assertEquals("ad_container", rule.requiredSelectors.single().single().id)
+        val nodes = listOf(n("FrameLayout", count = 1), n("ImageView", 0, 0, clickable = true))
+            .mapIndexed { i, node -> if (i == 0) node.copy(id = "$pkg:id/ad_container") else node.copy(id = "$pkg:id/close_btn") }
+        assertEquals(1, AdSkipMatcher.findTarget(rule, nodes))
+        assertNull(AdSkipMatcher.findTarget(rule, nodes.drop(1)))
+    }
+
+    @Test fun lttRejectsNotificationCloseWithoutAdContext() {
+        val config = buildJsonObject { put("popup_rules", buildJsonArray { add(buildJsonObject {
+            put("id", "开启消息通知"); put("action", "close")
+        }) }) }
+        val source = buildJsonArray { add(buildJsonObject { put(pkg.hashCode().toString(), config.toString()) }) }
+        val preview = AdSkipImport.parse(source.toString(), mapOf(pkg to "示例应用"))
+        assertTrue(preview.pack == null)
+        assertEquals(1, preview.issues.size)
+    }
+
+    @Test fun lttNeverClicksAnAdLandingAction() {
+        val config = buildJsonObject { put("popup_rules", buildJsonArray { add(buildJsonObject {
+            put("id", "ad_container"); put("action", "buy_now")
+        }) }) }
+        val source = buildJsonArray { add(buildJsonObject { put(pkg.hashCode().toString(), config.toString()) }) }
+        val preview = AdSkipImport.parse(source.toString(), mapOf(pkg to "示例应用"))
+        assertNull(preview.pack)
+        assertEquals(1, preview.issues.size)
     }
 }

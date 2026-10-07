@@ -86,10 +86,15 @@ object AdSkipImport {
             config["popup_rules"].asArrayOrNull()?.forEachIndexed { ri, item -> runCatching {
                 require((config.keys - setOf("popup_rules")).isEmpty()) { "应用配置含尚不支持的动作或限制条件" }
                 val obj = item.jsonObject; val action = obj.str("action") ?: error("缺少动作")
-                require(action != "GLOBAL_ACTION_BACK" && !action.contains(',') && isAdText(action + obj.str("id"))) { "不是安全的广告跳过规则" }
-                val selector = lttSelector(action); val max = obj["times"]?.jsonPrimitive?.intOrNull ?: 0; require(max in 0..20)
+                val context = obj.str("id") ?: error("缺少广告上下文")
+                require(action != "GLOBAL_ACTION_BACK" && !action.contains(',') && !context.contains(',') && isLttAdRule(context, action)) { "不是安全的广告跳过规则" }
+                val selector = lttSelectors(action)
+                val required = context.takeIf { it != action }?.let(::lttSelectors)?.map { listOf(it) }.orEmpty()
+                val max = obj["times"]?.jsonPrimitive?.intOrNull ?: 0; require(max in 0..20)
                 require((obj.keys - setOf("id", "action", "times")).isEmpty()) { "规则含尚不支持的限制条件" }
-                val rule = AdSkipRule(stableId("ltt|$key|$ri|$action"), label(obj.str("id") ?: "广告关闭", 60), pkg, selectors = selector, appLabel = appName, actionMaximum = max, allowGesture = true, adapterVersion = 2)
+                val rule = AdSkipRule(stableId("ltt|$key|$ri|$context|$action"), label(context, 60), pkg,
+                    selectors = selector, requiredSelectors = required,
+                    appLabel = appName, actionMaximum = max, allowGesture = true, adapterVersion = 3)
                 AdSkipRules.validate(AdSkipRulePack(2, 1, "李跳跳导入", "用户导入", listOf(rule)), true)
                 rule
             }.onSuccess { rules += it }.onFailure { issues += AdSkipImportIssue(appName, "规则 $ri", label(it.message ?: "不兼容", 220)) } }
@@ -97,11 +102,19 @@ object AdSkipImport {
         return preview("李跳跳导入", 1, installedPackages.size, rules, issues, "用户导入李跳跳文本规则")
     }
 
-    private fun lttSelector(action: String): List<AdSkipSelector> = listOf(AdSkipSelector(labelMatches = action.split('&').map { part ->
-        require(part.isNotBlank() && part.length <= 100)
-        val prefix = part.firstOrNull(); val text = if (prefix in listOf('=', '+', '-')) part.drop(1) else part
-        AdSkipLabelMatch(text, when (prefix) { '=' -> "exact"; '+' -> "prefix"; '-' -> "suffix"; else -> "contains" })
-    }))
+    /** LiTiaoTiao uses the same field for resource IDs and visible labels. */
+    private fun lttSelectors(value: String): List<AdSkipSelector> {
+        val parts = value.split('&').map { it.trim() }
+        require(parts.isNotEmpty() && parts.all { it.isNotBlank() && it.length <= 100 })
+        if (parts.size == 1 && parts[0].matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) {
+            return listOf(AdSkipSelector(id = parts[0]))
+        }
+        return listOf(AdSkipSelector(labelMatches = parts.map { part ->
+            val prefix = part.firstOrNull(); val text = if (prefix in listOf('=', '+', '-')) part.drop(1) else part
+            require(text.isNotBlank() && text.length <= 100)
+            AdSkipLabelMatch(text, when (prefix) { '=' -> "exact"; '+' -> "prefix"; '-' -> "suffix"; else -> "contains" })
+        }))
+    }
 
     private fun parseSelector(source: String, pkg: String): List<AdSkipSelector> {
         require(source.length <= 1000 && !source.contains('\\')) { "选择器过长或包含尚不支持的转义" }
@@ -191,7 +204,13 @@ object AdSkipImport {
 
     private fun preview(name: String, version: Int, count: Int, rules: List<AdSkipRule>, issues: List<AdSkipImportIssue>, source: String) = AdSkipImportPreview(rules.takeIf { it.isNotEmpty() }?.let { AdSkipRulePack(2, version, label(name,80), source, it.distinctBy(AdSkipRule::id)) }, issues, count)
     private fun isAdGroup(name: String) = listOf("广告", "开屏", "弹窗", "卡片", "banner", "splash").any { name.contains(it, true) }
-    private fun isAdText(text: String) = listOf("广告", "跳过", "关闭", "不感兴趣", "skip", "close", "dismiss").any { text.contains(it, true) }
+    private fun isLttAdRule(context: String, action: String): Boolean {
+        val closeControl = listOf("close", "dismiss", "skip", "cancel", "ignore", "关闭", "跳过", "取消", "不感兴趣", "以后再说", "暂不").any { action.contains(it, true) }
+        if (!closeControl) return false
+        val explicitSkip = listOf("跳过", "skip", "关闭广告", "close ad", "dismiss ad", "不感兴趣").any { action.contains(it, true) }
+        val adContext = listOf("广告", "推广", "开屏", "弹窗", "banner", "splash", "interstitial", "native", "ksad", "gdt", "ad_", "_ad", "advert", "popup", "promotion").any { context.contains(it, true) }
+        return explicitSkip || adContext
+    }
     private fun stableId(value: String) = "import-" + MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).take(15).joinToString("") { "%02x".format(it) }
     private fun javaHash(value: String): String { var n = 0; value.forEach { n = 31 * n + it.code }; return n.toString() }
     private fun label(value: String, max: Int) = value.filterNot { it.isISOControl() || it == '|' }.take(max).ifBlank { "未命名" }
