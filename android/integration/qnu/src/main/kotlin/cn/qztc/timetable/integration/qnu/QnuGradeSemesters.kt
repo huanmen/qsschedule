@@ -5,7 +5,7 @@ import java.time.LocalDate
 data class QnuGradeSemester(val year: String, val term: String, val records: List<QnuGradeRecord>) {
     val id: String get() = "$year/$term"
     val label: String get() = "$year 年 · ${term.removeSuffix("学期").removeSuffix("季")}季学期"
-    val shortLabel: String get() = "${year.takeLast(2)} · ${term.removeSuffix("学期").removeSuffix("季")}"
+    val shortLabel: String get() = "${year.takeLast(2)}.${term.removeSuffix("学期").removeSuffix("季")}"
     val order: Int? get() = QnuGradeSemesters.order(year, term)
 }
 

@@ -16,8 +16,6 @@ object AdSkipGenericRules {
     fun findTarget(rule: AdSkipRule, nodes: List<AdSkipNode>): Int? {
         val screen = nodes.firstOrNull()?.bounds ?: return null
         if (screen.width <= 0 || screen.height <= 0) return null
-        val adMarker = nodes.any { it.visible && it.packageName == rule.packageName &&
-            (it.text?.trim() == "广告" || it.description?.trim() == "广告") }
         val labelled = nodes.indices.firstOrNull { index ->
             val node = nodes[index]
             val b = node.bounds ?: return@firstOrNull false
@@ -31,21 +29,11 @@ object AdSkipGenericRules {
                 val label = raw.trim()
                 if (!AdSkipRules.isSkipLabel(label)) false
                 else label.contains("广告") || label.contains("ad", ignoreCase = true) ||
-                    label.any(Char::isDigit) || adMarker || advertisingSkipId.containsMatchIn(node.id.orEmpty())
+                    label.any(Char::isDigit) || advertisingSkipId.containsMatchIn(node.id.orEmpty())
             }
         }
         if (labelled != null) return labelled
-        // Some splash SDKs expose only the ad container and draw the skip
-        // control on a canvas. The service will use a constrained top-right
-        // gesture for this explicit container, never for a generic window.
-        return nodes.indices.firstOrNull { index ->
-            val node = nodes[index]
-            val id = node.id?.substringAfter(":id/").orEmpty().lowercase()
-            val b = node.bounds ?: return@firstOrNull false
-            node.visible && node.enabled && node.packageName == rule.packageName &&
-                id in setOf("splash_ad_container", "splash_container") &&
-                b.width >= screen.width * .7 && b.height >= screen.height * .45
-        }
+        return null
     }
 
     fun relocatedTarget(rule: AdSkipRule, before: AdSkipNode, nodes: List<AdSkipNode>, index: Int): Boolean {
@@ -66,16 +54,8 @@ object AdSkipGenericRules {
         val closeId = node.id?.substringAfter(":id/")?.lowercase().orEmpty()
         val looksLikeClose = labels.any { it in setOf("×", "✕", "✖", "X", "x", "关闭") } ||
             closeId.contains("close") || closeId.contains("dismiss")
-        // Some SDKs expose the drawn X as an ImageView and put the click action
-        // on a small clickable parent. Require a large image ad above it and a
-        // compact control in the lower-middle overlay area.
-        if (!looksLikeClose && node.className?.substringAfterLast('.') == "ImageView" &&
-            node.parent?.let(nodes::getOrNull)?.clickable == true &&
-            b.top > screen.top + screen.height * .52 && b.bottom < screen.bottom - screen.height * .03 &&
-            nodes.any { candidate -> candidate.className?.substringAfterLast('.') == "ImageView" &&
-                candidate.bounds?.let { it.width > screen.width * .55 && it.height > screen.height * .25 && it.top < screen.top + screen.height * .3 } == true }) {
-            return true
-        }
+        // A close glyph is accepted only inside a bounded container that is
+        // explicitly marked as advertising.
         if (!looksLikeClose || b.width > screen.width * .16 || b.height > screen.height * .08) return false
         var parent = node.parent
         repeat(6) {
@@ -86,7 +66,7 @@ object AdSkipGenericRules {
                 children.any { child -> listOfNotNull(nodes[child].text, nodes[child].description).any(::adMarker) }
             val adId = container.id?.substringAfter(":id/")?.lowercase().orEmpty()
             val adContainer = adContainerId.containsMatchIn(adId)
-            if ((marked || adContainer) && box.width in (screen.width / 4)..screen.width &&
+            if ((marked || (adContainer && labels.any { it.equals("关闭广告", true) || it.equals("close ad", true) })) && box.width in (screen.width / 4)..screen.width &&
                 box.height in (screen.height / 10)..(screen.height * 4 / 5) &&
                 b.left >= box.left + box.width * 2 / 3 && b.top <= box.top + box.height / 4 &&
                 b.containedBy(box)) return true

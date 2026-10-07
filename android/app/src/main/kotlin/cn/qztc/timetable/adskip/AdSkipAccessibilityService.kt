@@ -338,13 +338,8 @@ class AdSkipAccessibilityService : AccessibilityService() {
             val b = target.bounds ?: return false
             val screen = tree.nodes.firstOrNull()?.bounds ?: return false
             if (!b.containedBy(screen)) return false
-            if (attempt.rule.id == AdSkipGenericRules.ID && target.id?.substringAfter(":id/") in setOf("splash_ad_container", "splash_container")) {
-                AdSkipBounds(screen.left + screen.width * 4 / 5, screen.top + screen.height / 20,
-                    screen.left + screen.width * 19 / 20, screen.top + screen.height / 7)
-            } else {
-                if (b.width > screen.width / 2 || b.height > screen.height / 3) return false
-                b
-            }
+            if (b.width > screen.width / 2 || b.height > screen.height / 3) return false
+            b
         }
         val path = Path().apply { moveTo((bounds.left + bounds.right) / 2f, (bounds.top + bounds.bottom) / 2f) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 40)).build()
