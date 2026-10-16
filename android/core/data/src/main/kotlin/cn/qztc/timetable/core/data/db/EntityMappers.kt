@@ -179,6 +179,8 @@ internal object EntityMappers {
         endDate = activity.endDate?.toString(),
         sessionsJson = json.encodeToString(ListSerializer(ActivitySession.serializer()), activity.effectiveSessions()),
         hiddenFromSchedule = activity.hiddenFromSchedule,
+        calendarTimetable = activity.calendarTimetable,
+        memoTimeJson = activity.memoTime?.let { json.encodeToString(cn.qztc.timetable.core.domain.model.ActivityMemoTime.serializer(), it) },
     )
 
     fun toDomain(entity: ActivityEntity) = ScheduleActivity(
@@ -197,6 +199,8 @@ internal object EntityMappers {
         endDate = entity.endDate?.takeIf { it.isNotBlank() }?.let(LocalDate::parse),
         sessions = json.decodeFromString(ListSerializer(ActivitySession.serializer()), entity.sessionsJson),
         hiddenFromSchedule = entity.hiddenFromSchedule,
+        calendarTimetable = entity.calendarTimetable,
+        memoTime = entity.memoTimeJson?.let { json.decodeFromString(cn.qztc.timetable.core.domain.model.ActivityMemoTime.serializer(), it) },
     )
 
     fun toEntity(day: AcademicDay) = AcademicDayEntity(

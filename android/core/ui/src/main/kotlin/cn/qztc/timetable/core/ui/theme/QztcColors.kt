@@ -134,4 +134,5 @@ val CoursePalette: List<CourseColor> = listOf(
     CourseColor(Color(0xFFC96A57), Color(0xFFFBE1DC), Color(0xFF8F3E2E), Color(0x4DC96A57), Color(0xFFF5BFB3)),
     CourseColor(Color(0xFF7C9A3D), Color(0xFFE4EED2), Color(0xFF4C6320), Color(0x4D7C9A3D), Color(0xFFD5E8A6)),
     CourseColor(Color(0xFF3D9E96), Color(0xFFD5F0EE), Color(0xFF256E68), Color(0x4D3D9E96), Color(0xFFA9E6E0)),
+    CourseColor(Color(0xFFB66B95), Color(0xFFF5DEEB), Color(0xFF793F62), Color(0x4DB66B95), Color(0xFFF0B9D7)),
 )

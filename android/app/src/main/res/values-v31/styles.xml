@@ -1,0 +1,36 @@
+<resources>
+    <style name="Theme.QztcTimetable" parent="Theme.QztcTimetable.Base">
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowSplashScreenBackground">@color/qztc_launch_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+    <style name="Theme.QztcLaunch.Original.System" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">@color/qztc_launch_background</item>
+    </style>
+    <style name="Theme.QztcLaunch.Original.Light" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#E9F1EF</item>
+    </style>
+    <style name="Theme.QztcLaunch.Original.Dark" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#0B141F</item>
+    </style>
+    <style name="Theme.QztcLaunch.Soda.System" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">@color/qztc_launch_soda</item>
+    </style>
+    <style name="Theme.QztcLaunch.Soda.Light" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#F1F7F9</item>
+    </style>
+    <style name="Theme.QztcLaunch.Soda.Dark" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#0C1820</item>
+    </style>
+    <style name="Theme.QztcLaunch.Citrus.System" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">@color/qztc_launch_citrus</item>
+    </style>
+    <style name="Theme.QztcLaunch.Citrus.Light" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#F5F8ED</item>
+    </style>
+    <style name="Theme.QztcLaunch.Citrus.Dark" parent="Theme.QztcTimetable">
+        <item name="android:windowSplashScreenBackground">#11180F</item>
+    </style>
+</resources>

@@ -23,6 +23,7 @@ captures/
 # Local prototype and verification artifacts
 .playwright-cli/
 output/
+output-*.log
 验证-*.png
 
 # Local tooling and OS files
@@ -33,6 +34,8 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+__pycache__/
+*.pyc
 web/campus-map/data/users.json
 web/campus-map/data/*.generated.json
 
@@ -63,3 +66,18 @@ web/campus-map/data/*.generated.json
 /installed-*
 /李跳跳（规则整合包）/
 /gkd最新规则.txt
+
+# Runtime plugin drafts and immutable upload history
+/server/qsschedule/plugins.sqlite*
+/server/qsschedule/plugin-packages/
+
+# Local QA evidence and publication workspaces
+/docs/*-device/
+/docs/*-qa/
+/docs/*-browser/
+/docs/oct*-device*
+/docs/oct*-unit-results.json
+/docs/oct*-installed-release.json
+/docs/oct16-rendering/
+/docs/source-review/
+/volunteer-feedback*.png

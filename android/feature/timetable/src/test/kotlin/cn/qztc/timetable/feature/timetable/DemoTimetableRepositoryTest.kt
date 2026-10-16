@@ -235,7 +235,7 @@ class DemoTimetableRepositoryTest {
             name = "国庆节",
         )
         val activity = ScheduleActivity(
-            id = "sports",
+            id = "calendar-event:s:sports",
             semesterId = semester.id,
             name = "校运会",
             kind = ActivityKind.DAY,
@@ -249,4 +249,22 @@ class DemoTimetableRepositoryTest {
         assertFalse(hasWeekActivityView(base.copy(activities = listOf(activity)), 5))
         assertTrue(hasWeekActivityView(base.copy(activities = listOf(activity)), 10))
     }
+    @Test fun manualCalendarActivitiesDoNotEnableOrPopulateTimetableViews() {
+        val semester = Semester("s", "test", 2026, Term.AUTUMN, LocalDate.of(2026, 8, 31))
+        val manual = ScheduleActivity("manual", semester.id, "same title", kind = ActivityKind.DAY,
+            startDate = semester.startDate, endDate = semester.startDate.plusDays(6))
+        val base = ImportedSchedule(semester, QnuPeriodDefaults.periods(), TimetableState.EMPTY, activities = listOf(manual))
+        val state = DemoScheduleState().apply { loadImported(base) }
+        assertEquals(listOf(manual), state.activities())
+        assertTrue(state.timetableActivities().isEmpty())
+        assertTrue(state.activitiesOn(1, 1).isEmpty())
+        assertTrue(state.activityBlocks(1, (1..7).toList()).isEmpty())
+        assertFalse(hasWeekActivityView(base, 1))
+        val school = manual.copy(id = "calendar-event:s:school")
+        state.loadImported(base.copy(activities = listOf(manual, school)))
+        assertEquals(listOf(school), state.activitiesOn(1, 1))
+        assertTrue(state.activityBlocks(1, (1..7).toList()).isNotEmpty())
+        assertTrue(hasWeekActivityView(state.importedSchedule, 1))
+    }
+
 }

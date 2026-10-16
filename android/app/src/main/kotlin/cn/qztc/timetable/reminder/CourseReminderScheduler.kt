@@ -39,6 +39,7 @@ object CourseReminderScheduler {
         val detail: String,
         val notificationId: Int,
         val displayMode: ReminderDisplayMode,
+        val courseDate: String,
     )
 
     @Synchronized
@@ -51,9 +52,10 @@ object CourseReminderScheduler {
         courseOverrides: Map<String, Int> = emptyMap(),
         courseMessages: Map<String, String> = emptyMap(),
         now: LocalDateTime = LocalDateTime.now(),
+        remindOnHolidays: Boolean = false,
     ) {
         val workManager = WorkManager.getInstance(context)
-        val fingerprint = fingerprint(schedule, enabled, minutesBefore, displayMode, courseOverrides, courseMessages, now)
+        val fingerprint = fingerprint(schedule, enabled, minutesBefore, displayMode, courseOverrides, courseMessages, now, remindOnHolidays)
         val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (preferences.getString(KEY_FINGERPRINT, null) == fingerprint) return
 
@@ -63,7 +65,7 @@ object CourseReminderScheduler {
             return
         }
 
-        val specs = reminderSpecs(schedule, minutesBefore, displayMode, courseOverrides, courseMessages, now)
+        val specs = reminderSpecs(schedule, minutesBefore, displayMode, courseOverrides, courseMessages, now, remindOnHolidays)
 
         specs.forEach { spec ->
             val delay = Duration.between(now, spec.reminderAt).toMillis().coerceAtLeast(0)
@@ -75,6 +77,7 @@ object CourseReminderScheduler {
                         KEY_DETAIL to spec.detail,
                         KEY_NOTIFICATION_ID to spec.notificationId,
                         "displayMode" to spec.displayMode.name,
+                        "courseDate" to spec.courseDate,
                     ),
                 )
                 .addTag(TAG)
@@ -91,11 +94,15 @@ object CourseReminderScheduler {
         courseOverrides: Map<String, Int>,
         courseMessages: Map<String, String>,
         now: LocalDateTime,
+        remindOnHolidays: Boolean,
     ): List<ReminderSpec> {
         val courses = schedule.state.courses.associateBy { it.id }
         val periods = schedule.periods.associateBy { it.no }
         val horizon = now.toLocalDate().plusDays(7)
-        return OccurrenceExpander.effective(schedule.semester, schedule.state, AcademicCalendar(schedule.academicDays))
+        val calendar = AcademicCalendar(schedule.academicDays)
+        return (1..schedule.semester.totalWeeks).flatMap {
+            OccurrenceExpander.expandVisibleWeek(schedule.semester, schedule.state, it, calendar, includeHolidayCourses = remindOnHolidays)
+        }
             .asSequence()
             .filter { it.state != OccurrenceState.CANCELLED && !it.date.isAfter(horizon) }
             .mapNotNull { occurrence ->
@@ -113,6 +120,7 @@ object CourseReminderScheduler {
                     teacher = occurrence.teacher,
                     note = course.note,
                     customMessage = courseMessages[course.id],
+                    today = now.toLocalDate(),
                 )
                 val stableId = "${occurrence.courseId}:${occurrence.date}:${occurrence.periodStart}"
                 ReminderSpec(
@@ -122,6 +130,7 @@ object CourseReminderScheduler {
                     detail = detail,
                     notificationId = stableId.hashCode(),
                     displayMode = displayMode,
+                    courseDate = occurrence.date.toString(),
                 )
             }
             .toList()
@@ -135,17 +144,18 @@ object CourseReminderScheduler {
         courseOverrides: Map<String, Int>,
         courseMessages: Map<String, String>,
         now: LocalDateTime,
+        remindOnHolidays: Boolean = false,
     ): String {
         if (!enabled) return "disabled"
         if (schedule == null) return "no-schedule"
 
         val horizon = now.toLocalDate().plusDays(7)
-        val specs = reminderSpecs(schedule, minutesBefore, displayMode, courseOverrides, courseMessages, now)
+        val specs = reminderSpecs(schedule, minutesBefore, displayMode, courseOverrides, courseMessages, now, remindOnHolidays)
             .asSequence()
             .map { spec -> "${spec.stableId}|${spec.reminderAt}|${spec.title}|${spec.detail}" }
             .sorted()
             .joinToString("\n")
-        return "${ZoneId.systemDefault().id}|$horizon|${displayMode.name}|$specs"
+        return "route-v3|${ZoneId.systemDefault().id}|$horizon|${displayMode.name}|$remindOnHolidays|$specs"
     }
 
     internal fun reminderDelayMillis(reminderAt: LocalDateTime, now: LocalDateTime): Long =
@@ -161,9 +171,11 @@ internal fun formatCourseReminderDetail(
     teacher: String?,
     note: String?,
     customMessage: String? = null,
+    today: LocalDate = LocalDate.now(),
 ): String = buildString {
     customMessage?.trim()?.takeIf { it.isNotEmpty() }?.let { append("提醒：${it.take(240)}\n") }
-    append("${date.monthValue}月${date.dayOfMonth}日 $startTime")
+    if(date != today) append("${date.monthValue}月${date.dayOfMonth}日 ")
+    append(startTime)
     room?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
     teacher?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
     note?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\n备注：$it") }
@@ -175,7 +187,10 @@ class CourseReminderWorker(
 ) : CoroutineWorker(appContext, parameters) {
     override suspend fun doWork(): Result {
         val title = inputData.getString("title")?.takeIf { it.isNotBlank() } ?: return Result.success()
-        val detail = inputData.getString("detail").orEmpty()
+        val detail = inputData.getString("detail").orEmpty().let {text ->
+            if(inputData.getString("courseDate")==LocalDate.now().toString())
+                text.replace(Regex("(?m)^${LocalDate.now().monthValue}月${LocalDate.now().dayOfMonth}日 "),"")else text
+        }
         QztcNotifications.notifyCourseReminder(
             applicationContext,
             title,
@@ -183,6 +198,7 @@ class CourseReminderWorker(
             inputData.getInt("notificationId", title.hashCode()),
             runCatching { ReminderDisplayMode.valueOf(inputData.getString("displayMode").orEmpty()) }
                 .getOrDefault(ReminderDisplayMode.NOTIFICATION_BAR),
+            inputData.getString("courseDate"),
         )
         return Result.success()
     }

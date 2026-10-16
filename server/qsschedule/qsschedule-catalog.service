@@ -1,0 +1,20 @@
+[Unit]
+Description=Collect full academic-year competition catalog and FAQs
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=qsschedule
+Group=qsschedule
+WorkingDirectory=/opt/qsschedule
+Environment=QSS_DATA=/var/lib/qsschedule
+ExecStart=/opt/qsschedule/exam-venv/bin/python /opt/qsschedule/jingsai_catalog_collector.py
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qsschedule
+UMask=0027
+MemoryMax=256M

@@ -33,6 +33,8 @@ data class ScheduleException(
     val substituteTeacher: String? = null,
     val sourceType: SourceType,
     val note: String? = null,
+    /** Full school course name for change notices that are kept outside the timetable. */
+    val courseName: String? = null,
 ) {
     companion object {
         fun stableId(type: ExceptionType, courseId: String, slot: SlotRef): String =

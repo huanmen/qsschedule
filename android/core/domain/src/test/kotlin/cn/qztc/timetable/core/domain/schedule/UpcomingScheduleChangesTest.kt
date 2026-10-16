@@ -8,6 +8,27 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 class UpcomingScheduleChangesTest {
+    @Test fun checkingNoticeDoesNotReplaceFullCourseNameWithOlderShortName() {
+        val semester = Semester("s", "秋", 2026, Term.AUTUMN, LocalDate.of(2026, 8, 31))
+        val saved = Course("saved", "s", SourceType.QNU_EDU, "saved", code = "1001", sequence = "01", name = "大学生职业生涯发展与规划")
+        val incoming = saved.copy(id = "incoming", name = "大学生职业…")
+        val notice = ScheduleException("notice", incoming.id, ExceptionType.CANCEL, SlotRef(10, 1, 1, 2), sourceType = SourceType.QNU_EDU, courseName = "大学生职业…")
+        val result = UpcomingScheduleChanges.merge(semester, TimetableState(courses = listOf(saved)),
+            TimetableState(courses = listOf(incoming), exceptions = listOf(notice)), emptyList(), LocalDateTime.of(2026, 10, 12, 0, 0))
+        assertEquals(saved.name, result.exceptions.single().courseName)
+    }
+    @Test fun noticeInboxKeepsExpiredNoticesAndFullCourseNamesWithoutReplacingTimetable() {
+        val semester=Semester("s","2026 秋",2026,Term.AUTUMN,LocalDate.of(2026,8,31),20)
+        val course=Course("saved","s",SourceType.QNU_EDU,"code",code="1001",name="大学生职业生涯发展与规划")
+        val current=TimetableState(courses=listOf(course))
+        val incoming=TimetableState(courses=listOf(course.copy(id="notice")),exceptions=listOf(
+            ScheduleException("old","notice",ExceptionType.CANCEL,SlotRef(1,1,1,2),sourceType=SourceType.QNU_EDU),
+            ScheduleException("next","notice",ExceptionType.MOVE,SlotRef(10,1,1,2),SlotRef(10,2,3,4),sourceType=SourceType.QNU_EDU)))
+        val result=UpcomingScheduleChanges.merge(semester,current,incoming,emptyList(),LocalDateTime.of(2026,10,12,12,0),includeExpired=true)
+        assertEquals(current.courses,result.courses)
+        assertEquals(2,result.exceptions.size)
+        assertTrue(result.exceptions.all { it.courseName==course.name && it.courseId==course.id })
+    }
     @Test fun syncKeepsCoursesAndOnlyAppliesUnfinishedCancellationAndMove() {
         val semester=Semester("s","测试",2026,Term.AUTUMN,LocalDate.of(2026,9,14),20)
         val course=Course("c","s",SourceType.QNU_EDU,"c",name="测试课")

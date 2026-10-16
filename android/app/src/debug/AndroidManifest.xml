@@ -8,5 +8,8 @@
         <activity android:name=".AdSkipQaActivity" android:exported="true" />
         <activity android:name=".WidgetPreviewActivity" android:exported="true" />
         <activity android:name=".ArrangementPageQaActivity" android:exported="true" />
+        <activity android:name=".AcademicHandoffQaActivity" android:exported="true" />
+        <activity android:name=".Oct13IsolatedQaActivity" android:exported="true" />
+        <activity android:name=".CalendarFollowupQaActivity" android:exported="true" />
     </application>
 </manifest>

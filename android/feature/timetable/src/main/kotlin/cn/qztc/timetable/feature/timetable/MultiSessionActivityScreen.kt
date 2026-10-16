@@ -29,6 +29,25 @@ import cn.qztc.timetable.core.ui.theme.LocalQztcColors
 import cn.qztc.timetable.core.ui.theme.QztcDatePicker
 import java.util.UUID
 
+internal data class ActivitySessionDraft(
+    val id: String, val kind: ActivityKind, val weekday: Int? = null,
+    val periodStart: Int? = null, val periodEnd: Int? = null, val weeks: List<Int> = emptyList(),
+    val date: java.time.LocalDate? = null, val startMinute: Int? = null, val endMinute: Int? = null,
+    val location: ScheduleLocation = ScheduleLocation(),
+) {
+    val valid: Boolean get() = if (kind == ActivityKind.PERIOD)
+        weekday in 1..7 && periodStart in 1..13 && periodEnd in (periodStart ?: 1)..13 && weeks.isNotEmpty()
+        else date != null && ((startMinute == null && endMinute == null) ||
+            (startMinute in 0..1439 && endMinute in ((startMinute ?: 0) + 1)..1440))
+    fun toSession() = ActivitySession(id, kind, weekday, periodStart, periodEnd, weeks,
+        date, startMinute, endMinute, location)
+    companion object {
+        fun from(session: ActivitySession) = ActivitySessionDraft(session.id, session.kind, session.weekday,
+            session.periodStart, session.periodEnd, session.weeks, session.date, session.startMinute,
+            session.endMinute, session.location)
+    }
+}
+
 @Composable
 fun ActivityEditPage(
     title: String, editorKey: String, initial: ActivityEditDraft, presetColors: List<Int>, totalWeeks: Int,
@@ -38,7 +57,7 @@ fun ActivityEditPage(
     var name by remember(editorKey) { mutableStateOf(initial.name) }
     var note by remember(editorKey) { mutableStateOf(initial.note) }
     var sessions by remember(editorKey) { mutableStateOf(initial.sessions.ifEmpty { initial.toScheduleActivity("").effectiveSessions() }) }
-    var editing by remember { mutableStateOf<ActivitySession?>(null) }
+    var editing by remember { mutableStateOf<ActivitySessionDraft?>(null) }
     var draft by remember(editing?.id) { mutableStateOf(editing) }
     var deleteOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -63,7 +82,7 @@ fun ActivityEditPage(
             EditCourseField("活动备注", note, { note = it })
         } }
         itemsIndexed(sessions, key = { _, row -> row.id }) { index, row ->
-            Row(Modifier.fillMaxWidth().clickable { editing = row }.padding(start = 16.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { editing = ActivitySessionDraft.from(row) }.padding(start = 16.dp)) {
                 Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
                     Text("${index+1}  ${activitySessionLabel(row)}")
                     Text(row.location.name.ifBlank { "未填写地点" }, style = MaterialTheme.typography.bodySmall)
@@ -73,19 +92,19 @@ fun ActivityEditPage(
             if (editing?.id == row.id && draft != null) {
                 ActivitySessionInlineEditor(requireNotNull(draft), context, totalWeeks, onChange = { draft = it },
                     onCancel = { editing = null }, onSave = {
-                        sessions = sessions.map { current -> if (current.id == row.id) requireNotNull(draft) else current }
+                        sessions = sessions.map { current -> if (current.id == row.id) requireNotNull(draft).toSession() else current }
                         editing = null
                     })
             }
         }
         item { OutlinedButton(onClick = {
-            editing = (sessions.lastOrNull() ?: ActivitySession("new", ActivityKind.PERIOD, initial.weekday, initial.periodStart, initial.periodEnd, initial.weeks.ifEmpty { listOf(1) }))
-                .copy(id = UUID.randomUUID().toString())
+            editing = ActivitySessionDraft(UUID.randomUUID().toString(), initial.kind,
+                date = if (initial.kind == ActivityKind.DAY) initial.startDate else null)
         }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { Icon(Icons.Outlined.Add, null); Text("添加场次") } }
         if (editing != null && sessions.none { it.id == editing?.id } && draft != null) item {
             ActivitySessionInlineEditor(requireNotNull(draft), context, totalWeeks, onChange = { draft = it },
                 onCancel = { editing = null }, onSave = {
-                    sessions = sessions + requireNotNull(draft)
+                    sessions = sessions + requireNotNull(draft).toSession()
                     editing = null
                 })
         }
@@ -110,10 +129,10 @@ private fun activitySessionLabel(session: ActivitySession): String {
 
 @Composable
 private fun ActivitySessionInlineEditor(
-    session: ActivitySession,
+    session: ActivitySessionDraft,
     context: android.content.Context,
     totalWeeks: Int,
-    onChange: (ActivitySession) -> Unit,
+    onChange: (ActivitySessionDraft) -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -128,19 +147,18 @@ private fun ActivitySessionInlineEditor(
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = session.kind == ActivityKind.PERIOD, onClick = {
-                onChange(ActivitySession(session.id, ActivityKind.PERIOD, weekday = 1, periodStart = 1,
-                    periodEnd = 2, weeks = listOf(1), location = session.location))
+                onChange(ActivitySessionDraft(session.id, ActivityKind.PERIOD, location = session.location))
             }, label = { Text("按课程时间") })
             FilterChip(selected = session.kind == ActivityKind.DAY, onClick = {
-                onChange(ActivitySession(session.id, ActivityKind.DAY,
+                onChange(ActivitySessionDraft(session.id, ActivityKind.DAY,
                     date = session.date ?: java.time.LocalDate.now(), location = session.location))
             }, label = { Text("按日期") })
         }
         if (session.kind == ActivityKind.PERIOD) {
-            val startIndex = displaySlotIndexForActual(session.periodStart ?: 1)
-            val endIndex = displaySlotIndexForActual(session.periodEnd ?: session.periodStart ?: 1)
-            Text(ActivityWeekLayout.sessionTime(session), color = colors.accentDeep)
-            WeekPeriodPicker(session.weekday ?: 1, startIndex, endIndex,
+            val startIndex = session.periodStart?.let(::displaySlotIndexForActual) ?: -1
+            val endIndex = session.periodEnd?.let(::displaySlotIndexForActual) ?: startIndex
+            Text(if (session.valid) ActivityWeekLayout.sessionTime(session.toSession()) else "请选择星期、节次和周数", color = colors.accentDeep)
+            WeekPeriodPicker(session.weekday ?: 0, startIndex, endIndex,
                 onDay = { onChange(session.copy(weekday = it)); choosingRangeEnd = false },
                 onSlot = { index ->
                     if (!choosingRangeEnd || index < startIndex) {
@@ -196,7 +214,7 @@ private fun ActivitySessionInlineEditor(
         ScheduleLocationField(session.location) { onChange(session.copy(location = it)) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onCancel) { Text("取消") }
-            TextButton(onClick = onSave, enabled = session.kind != ActivityKind.PERIOD || session.weeks.isNotEmpty()) {
+            TextButton(onClick = onSave, enabled = session.valid) {
                 Text("保存场次", color = colors.accentDeep)
             }
         }
@@ -205,21 +223,10 @@ private fun ActivitySessionInlineEditor(
 
 @Composable
 private fun MinuteInput(label: String, minute: Int, modifier: Modifier = Modifier, onMinuteChange: (Int) -> Unit) {
-    var text by remember(minute) { mutableStateOf("%02d:%02d".format(minute / 60, minute % 60)) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = { next ->
-            text = next.take(5)
-            val digits = next.filter(Char::isDigit)
-            if (digits.length == 4) {
-                val hour = digits.substring(0, 2).toIntOrNull() ?: -1
-                val mins = digits.substring(2).toIntOrNull() ?: -1
-                if (hour in 0..23 && mins in 0..59) onMinuteChange(hour * 60 + mins)
-            }
-        },
-        label = { Text(label) },
-        singleLine = true,
-        modifier = modifier,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-    )
+    var picking by remember { mutableStateOf(false) }
+    OutlinedButton(onClick = { picking = true }, modifier = modifier) {
+        Text("$label\n%02d:%02d".format(minute / 60, minute % 60))
+    }
+    if (picking) cn.qztc.timetable.core.ui.theme.QztcTimePicker(java.time.LocalTime.of(minute / 60, minute % 60),
+        onDismiss = { picking = false }) { time -> onMinuteChange(time.hour * 60 + time.minute); picking = false }
 }

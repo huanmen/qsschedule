@@ -122,6 +122,8 @@ data class ActivityEntity(
     val endDate: String?,
     @ColumnInfo(defaultValue = "'[]'") val sessionsJson: String = "[]",
     @ColumnInfo(defaultValue = "0") val hiddenFromSchedule: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val calendarTimetable: Boolean = true,
+    val memoTimeJson: String? = null,
 )
 
 @Entity(tableName = "activity_suppressions", indices = [Index("semesterId"), Index("activityId")])

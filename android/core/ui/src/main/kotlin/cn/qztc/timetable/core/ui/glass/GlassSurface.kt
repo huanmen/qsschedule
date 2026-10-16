@@ -13,6 +13,8 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -101,7 +103,9 @@ fun GlassSurface(
         role == GlassRole.FUNCTIONAL -> base.copy(alpha = alpha.coerceIn(.12f, .92f))
         else -> legibleSurface
     }
-    val usesBackdrop = !effectsSuspended && quality != GlassQuality.SOLID_SURFACE && hazeState != null
+    // Repeated course cards use the tinted surface; capture the shared backdrop
+    // only for the small navigation/control layer.
+    val usesBackdrop = role == GlassRole.FUNCTIONAL && quality != GlassQuality.SOLID_SURFACE && hazeState != null
     val hazeModifier = if (usesBackdrop) {
         Modifier.hazeEffect(
             state = hazeState,
@@ -117,8 +121,7 @@ fun GlassSurface(
                 fallbackTint = HazeTint(fallback),
             ),
         ) {
-            // A fixed 0.66 scale keeps backdrop blur responsive on phone GPUs.
-            inputScale = HazeInputScale.Fixed(.66f)
+            inputScale = HazeInputScale.Fixed(.4f)
         }
     } else {
         Modifier.background(fallback)
@@ -136,7 +139,7 @@ fun GlassSurface(
     }
 
     val opticalModifier = Modifier.drawWithCache {
-        val fullOptics = !effectsSuspended && quality == GlassQuality.FULL_LENS
+        val fullOptics = role == GlassRole.FUNCTIONAL && quality == GlassQuality.FULL_LENS
         val borderWidth = if (fullOptics) 1.4.dp.toPx() else 1.dp.toPx()
         val opticalCorner = (if (role == GlassRole.FUNCTIONAL) QztcCorners.functional else QztcCorners.content).toPx()
         val borderBrush = when (quality) {
@@ -205,7 +208,13 @@ fun GlassSurface(
                     ),
             )
         }
-        content()
+        val backdrop = LocalBackdropColor.current
+        val foreground = if (role == GlassRole.FUNCTIONAL && backdrop != null) {
+            val surface = if (quality == GlassQuality.SOLID_SURFACE) colors.solid
+                else base.copy(alpha = if (usesBackdrop) (alpha * .54f).coerceIn(.08f,.52f) else alpha.coerceIn(.12f,.92f)).compositeOver(backdrop)
+            readableForeground(surface)
+        } else null
+        CompositionLocalProvider(LocalGlassForeground provides foreground) { content() }
     }
 }
 

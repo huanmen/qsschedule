@@ -15,7 +15,7 @@ class CalendarDisplayPolicyTest {
         kind = ActivityKind.DAY, startDate = event.startDate, endDate = event.startDate)
 
     @Test fun defaultSuggestionIsNotEvidenceOfSavedInclusion() {
-        assertTrue(CalendarDefaultInclusion.includes(event, 2025, LocalDate.of(2026, 10, 4)))
+        assertFalse(CalendarDefaultInclusion.includes(event, 2025, LocalDate.of(2026, 10, 4)))
         assertFalse(isCalendarEventIncluded(event, semester, emptyList()))
         assertTrue(isCalendarEventIncluded(event, semester, listOf(saved)))
         assertFalse(isCalendarEventIncluded(event, semester, listOf(saved.copy(hiddenFromSchedule = true))))

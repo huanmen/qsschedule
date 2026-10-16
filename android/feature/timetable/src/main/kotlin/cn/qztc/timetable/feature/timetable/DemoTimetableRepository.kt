@@ -224,7 +224,8 @@ class DemoScheduleState {
     ): List<DemoOccurrence> = importedSchedule?.let { schedule ->
         val courses = schedule.state.courses.associateBy { it.id }
         val (importedPalette, meetings) = occurrenceLookups(schedule)
-        val state = if (includeScheduleChanges) schedule.state else schedule.state.copy(
+        val viewState = if (respectAcademicCalendar) schedule.state else schedule.state.courseView()
+        val state = if (includeScheduleChanges) viewState else viewState.copy(
             exceptions = schedule.state.exceptions.filterNot { exception ->
                 exception.original?.week == week || exception.replacement?.week == week
             },
@@ -264,10 +265,12 @@ class DemoScheduleState {
     }
 
     fun activities(): List<ScheduleActivity> = importedSchedule?.activities.orEmpty()
+    fun timetableActivities(): List<ScheduleActivity> = activities().filter(
+        cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay::inTimetable)
 
     fun activitiesOn(week: Int, weekday: Int): List<ScheduleActivity> {
         val date = dateFor(week, weekday)
-        return activities().filter { it.appliesOn(week, weekday, date) }
+        return timetableActivities().filter { it.appliesOn(week, weekday, date) }
     }
 
     fun activityBlocks(
@@ -275,7 +278,7 @@ class DemoScheduleState {
         visibleDays: List<Int>,
         includeLunchPeriods: Boolean = true,
     ) = ActivityWeekLayout.blocksForWeek(
-        activities = activities(),
+        activities = timetableActivities(),
         week = week,
         visibleDays = visibleDays,
         dateOf = { weekday -> dateFor(week, weekday) },

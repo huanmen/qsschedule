@@ -8,6 +8,13 @@ import org.junit.Test
 
 class QnuTimetableParserTest {
 
+    @Test fun `notice title retains full name when visible name is abbreviated`() {
+        val cells = listOf("停课", "1001", "<span title='大学生职业生涯发展与规划'>大学生职业…</span>", "01", "教师", "", "2", "第6周", "星期一", "1-2节", "教室", "", "", "", "", "", "")
+        val html = "<div id='title'>2026 秋</div><table><tr>" + cells.joinToString("") { "<td>$it</td>" } + "</tr></table>"
+        val result = QnuTimetableParser.parseChangesHtml(html)
+        assertEquals("大学生职业生涯发展与规划", result.changeDetails.single().courseName)
+    }
+
     @Test fun `row spans spaced headings and numbering column retain profile alignment`() {
         val html="""<table><tr><th>序号</th><th>课程名</th><th>课序号</th><th>学<br>分</th><th>选课 属性</th><th>考核<br>方式</th><th>教室</th></tr>
           <tr><td rowspan="2">1</td><td rowspan="2">英语A(3)</td><td rowspan="2">02</td><td rowspan="2">3.0</td><td rowspan="2">必修</td><td rowspan="2">考试</td><td>A101</td></tr>

@@ -48,8 +48,7 @@ fun DayScheduleScreen(
     reminderState: CourseReminderUiState = CourseReminderUiState(),
     onSaveReminder: (String, Int?, String?) -> Unit = { _, _, _ -> },
     coursePresetColors: List<Int> = CoursePalette.indices.toList(),
-    onSaveActivity: (ActivityEditDraft, List<String>) -> Unit = { _, _ -> },
-    onDeleteActivity: (String, Boolean) -> Unit = { _, _ -> },
+    onOpenCalendar: (java.time.LocalDate) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalQztcColors.current
@@ -62,47 +61,8 @@ fun DayScheduleScreen(
     val dayActivities = remember(week, day, scheduleState.importedSchedule) {
         scheduleState.activitiesOn(week, day)
     }
-    var detailActivity by remember { mutableStateOf<ScheduleActivity?>(null) }
     var reminderOccurrence by remember { mutableStateOf<DemoOccurrence?>(null) }
-    var pendingActivitySave by remember { mutableStateOf<PendingActivitySave?>(null) }
     val totalWeeks = scheduleState.importedSchedule?.semester?.totalWeeks ?: 20
-
-    detailActivity?.let { activity ->
-        ActivityDetailPage(
-            activity = activity,
-            presetColors = coursePresetColors,
-            totalWeeks = totalWeeks,
-            fallbackWeekday = day,
-            fallbackDate = date,
-            onBack = { detailActivity = null },
-            onSave = { draft ->
-                val hits = findActivityConflicts(draft, scheduleState)
-                onSaveActivity(draft, hits.map { it.meeting.id })
-                detailActivity = null
-            },
-            onDelete = {
-                onDeleteActivity(activity.id, it)
-                detailActivity = null
-            },
-        )
-        pendingActivitySave?.let { pending ->
-            ActivityConflictDialog(
-                hits = pending.hits,
-                onRemoveCourses = {
-                    onSaveActivity(pending.draft, pending.hits.map { it.meeting.id })
-                    pending.afterSave()
-                    pendingActivitySave = null
-                },
-                onKeepCourses = {
-                    onSaveActivity(pending.draft, emptyList())
-                    pending.afterSave()
-                    pendingActivitySave = null
-                },
-                onDismiss = { pendingActivitySave = null },
-            )
-        }
-        return
-    }
 
     reminderOccurrence?.let { occurrence ->
         CourseReminderSheet(
@@ -132,7 +92,7 @@ fun DayScheduleScreen(
                 items(dayActivities, key = { it.id }) { activity ->
                     GlassSurface(
                         role = GlassRole.CONTENT,
-                        modifier = Modifier.fillMaxWidth().clickable { detailActivity = activity }.pressable(),
+                        modifier = Modifier.fillMaxWidth().clickable { onOpenCalendar(date) }.pressable(),
                     ) {
                         Column(Modifier.padding(QztcSpacing.lg), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(activity.name, style = QztcTypography.courseTitle, color = colors.ink)

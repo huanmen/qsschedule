@@ -8,6 +8,7 @@ data class CourseReminderUiState(
     val displayMode: ReminderDisplayMode = ReminderDisplayMode.SCREEN_POPUP,
     val overrides: Map<String, Int> = emptyMap(),
     val messages: Map<String, String> = emptyMap(),
+    val remindOnHolidays: Boolean = false,
 ) {
     val displayLabel: String
         get() = if (displayMode == ReminderDisplayMode.SCREEN_POPUP) "弹窗提醒" else "仅通知栏"

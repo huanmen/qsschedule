@@ -16,11 +16,11 @@ class CalendarDefaultInclusionTest {
         startDate = today,
     )
 
-    @Test fun includesRequiredSchoolEventsAndSelectsTheMatchingReportingEvent() {
-        assertTrue(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.TEACHING_START, "正式上课"), 2026, today))
-        assertTrue(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "新生报到"), 2026, today))
+    @Test fun timetableOnlyIncludesBreakBoundariesAndSports() {
+        assertFalse(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.TEACHING_START, "正式上课"), 2026, today))
+        assertFalse(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "新生报到"), 2026, today))
         assertFalse(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "学生报到"), 2026, today))
-        assertTrue(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "学生报到"), 2025, today))
+        assertFalse(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "学生报到"), 2025, today))
         assertFalse(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.REPORTING, "新生报到"), 2025, today))
         assertTrue(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.BREAK, "寒假"), 2026, today))
         assertTrue(CalendarDefaultInclusion.includes(event(SchoolCalendarEventType.SPORTS_MEETING, "校运动会"), 2026, today))

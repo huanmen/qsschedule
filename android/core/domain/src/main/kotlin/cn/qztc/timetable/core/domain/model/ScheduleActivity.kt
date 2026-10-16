@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 enum class ActivityKind { PERIOD, DAY }
 
 /**
- * 用户在学期课表上自行安排的活动。不参与教务同步，导入不会覆盖或删除。
+ * 日历中的活动。校历导入项同时用于周课表活动视图；手动项仅在日历中展示。
  */
 @Serializable
 data class ScheduleActivity(
@@ -27,8 +27,11 @@ data class ScheduleActivity(
     @Serializable(LocalDateSerializer::class) val endDate: LocalDate? = null,
     val sessions: List<ActivitySession> = emptyList(),
     val hiddenFromSchedule: Boolean = false,
+    val calendarTimetable: Boolean = true,
+    val memoTime: ActivityMemoTime? = null,
 ) {
     fun effectiveSessions(): List<ActivitySession> {
+        if (memoTime != null) return emptyList()
         if (sessions.isNotEmpty()) return sessions
         return when (kind) {
             ActivityKind.PERIOD -> if (weekday in 1..7 && periodStart in 1..13 && weeks.isNotEmpty()) {
@@ -43,7 +46,9 @@ data class ScheduleActivity(
         }
     }
 
-    fun appliesOn(week: Int, weekday: Int, date: LocalDate): Boolean = if (sessions.isNotEmpty()) {
+    fun appliesOn(week: Int, weekday: Int, date: LocalDate): Boolean = if (memoTime != null) {
+        date in memoTime.dates()
+    } else if (sessions.isNotEmpty()) {
         sessions.any { it.appliesOn(week, weekday, date) }
     } else when (kind) {
         ActivityKind.PERIOD ->

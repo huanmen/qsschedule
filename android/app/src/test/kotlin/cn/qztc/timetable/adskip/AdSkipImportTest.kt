@@ -33,8 +33,10 @@ class AdSkipImportTest {
         val pack = preview.pack ?: error("expected one compatible rule")
         val rule = pack.rules.single()
         assertEquals("org.example.reader.SplashActivity", rule.activityNames.single())
-        assertEquals("skip_button", rule.targetId)
-        assertEquals("跳过", rule.textPrefix)
+        assertEquals("skip_button", rule.selectors.single().id)
+        assertEquals("跳过", rule.selectors.single().textPrefix)
+        assertEquals(true, rule.selectors.single().clickable)
+        assertNull(rule.targetId)
     }
 
     @Test

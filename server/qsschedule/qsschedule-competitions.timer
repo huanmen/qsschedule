@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly competition notice collection
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

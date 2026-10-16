@@ -210,6 +210,40 @@ class TimetableRepositoryTest {
         assertEquals(4, OccurrenceExpander.effective(semester, repository.state(semester.id)).size)
     }
 
+
+    @Test fun legacyManualCoverageIsIgnoredButCourseCoverageStillApplies() = runBlocking {
+        val old = course("legacy-covered").copy(semesterId = semester.id)
+        val meeting = meeting("legacy-covered", weeks = listOf(1, 2, 3))
+        repository.updateCourseAndMeeting(old, null, meeting)
+        val occurrences = OccurrenceExpander.effective(semester, repository.state(semester.id))
+        db.timetableDao().upsertSuppressions(listOf(
+            cn.qztc.timetable.core.data.db.ActivitySuppressionEntity("manual-record", semester.id, "manual", OccurrenceExpander.key(occurrences[0])),
+            cn.qztc.timetable.core.data.db.ActivitySuppressionEntity("course-record", semester.id, "course-coverage:replacement", OccurrenceExpander.key(occurrences[1]))
+        ))
+        val saved = repository.state(semester.id)
+        assertEquals(listOf(1, 3), OccurrenceExpander.effective(semester, saved).map { it.week })
+        assertEquals(listOf(1, 3), OccurrenceExpander.effective(semester, saved.courseView()).map { it.week })
+    }
+
+    @Test fun manualActivityLeavesCoursesVisibleAndPreservesIndependentCourseCoverage() = runBlocking {
+        val old = course("activity-old").copy(semesterId = semester.id)
+        val oldMeeting = meeting("activity-old", weeks = listOf(1, 2, 3))
+        repository.updateCourseAndMeeting(old, null, oldMeeting)
+        val activity = cn.qztc.timetable.core.domain.model.ScheduleActivity(
+            "manual", semester.id, "合成活动", kind = cn.qztc.timetable.core.domain.model.ActivityKind.PERIOD,
+            weekday = 1, periodStart = 1, periodEnd = 2, weeks = listOf(2))
+        repository.saveActivityWithCoverage(activity, listOf(oldMeeting.id))
+        val saved = repository.state(semester.id)
+        assertEquals(listOf(1, 2, 3), OccurrenceExpander.effective(semester, saved).map { it.week })
+        assertTrue(repository.hiddenCourses(semester.id).isEmpty())
+        assertEquals(listOf(1, 2, 3), OccurrenceExpander.effective(semester, saved.courseView()).map { it.week })
+        val replacement = course("replacement").copy(semesterId = semester.id)
+        repository.replaceCourseMeetings(replacement, listOf(meeting("replacement", weeks = listOf(2))), overwriteConflicts = true)
+        val replaced = repository.state(semester.id).courseView()
+        assertEquals(listOf(1, 3), OccurrenceExpander.effective(semester, replaced).filter { it.courseId == old.id }.map { it.week })
+        assertTrue(OccurrenceExpander.findConflicts(OccurrenceExpander.effective(semester, replaced)).isEmpty())
+    }
+
     @Test
     fun `first import applies immediately and is revertable`() = runBlocking {
         val outcome = repository.importCandidate(semester, candidate(firstImport))

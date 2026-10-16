@@ -1,0 +1,22 @@
+[Unit]
+Description=Collect official public exam notices
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=qsschedule
+Group=qsschedule
+WorkingDirectory=/opt/qsschedule
+Environment=QSS_DATA=/var/lib/qsschedule
+ExecStart=/opt/qsschedule/exam-venv/bin/python /opt/qsschedule/exam_collector.py
+ExecStartPost=/opt/qsschedule/exam-venv/bin/python /opt/qsschedule/official_knowledge_collector.py
+TimeoutStartSec=12min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qsschedule
+UMask=0027
+MemoryMax=192M
+TasksMax=16

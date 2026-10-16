@@ -29,6 +29,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -56,6 +60,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -67,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,9 +95,6 @@ import cn.qztc.timetable.core.ui.theme.QztcTopIconButton
 import cn.qztc.timetable.core.ui.theme.QztcTypography
 import cn.qztc.timetable.core.ui.theme.CoursePalette
 import cn.qztc.timetable.core.domain.schedule.ActivityWeekLayout
-import cn.qztc.timetable.feature.timetable.ActivityEditPage
-import cn.qztc.timetable.feature.timetable.toEditDraft
-import cn.qztc.timetable.feature.timetable.toScheduleActivity
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -116,10 +121,9 @@ fun SemesterScheduleSettingsScreen(
     activities: List<ScheduleActivity> = emptyList(),
     importedCourseCount: Int = 0,
     importedTeachingWeeks: Int? = null,
-    onSaveActivity: suspend (ScheduleActivity) -> Unit = {},
-    onDeleteActivity: suspend (String) -> Unit = {},
+    onOpenCalendar: (LocalDate) -> Unit = {},
     showSemesterTools: Boolean = true,
-    activityPresetColors: List<Int> = CoursePalette.indices.toList(),
+    calendarMode: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalQztcColors.current
@@ -138,20 +142,36 @@ fun SemesterScheduleSettingsScreen(
     var editingSchedule by remember { mutableStateOf<CalendarHolidaySchedule?>(null) }
     var writing by remember { mutableStateOf(false) }
     var officialStartDate by remember(semester.id) { mutableStateOf<LocalDate?>(null) }
-    var detectedCalendarSemesters by remember(semester.id) { mutableStateOf(emptyList<DetectedSchoolSemester>()) }
-    var detectedCurrentSemester by remember(semester.id) { mutableStateOf<DetectedSchoolSemester?>(null) }
-    var detectedCalendarEvents by remember(semester.id) { mutableStateOf(emptyList<SchoolCalendarEvent>()) }
-    var detectedCalendarPdfUrl by remember(semester.id) { mutableStateOf<String?>(null) }
+    // Hydrate one local snapshot before the first frame, so cached nodes do not pop in later.
+    val initialCalendar = remember(semester.id) {
+        SchoolCalendarApi.cached(context, CourseArrangementProfile.schoolYear(), semester.id)
+    }
+    var detectedCalendarSemesters by remember(semester.id) { mutableStateOf(initialCalendar?.detectedSemesters().orEmpty()) }
+    var detectedCurrentSemester by remember(semester.id) { mutableStateOf(initialCalendar?.semesterFor(LocalDate.now())) }
+    var detectedCalendarEvents by remember(semester.id) { mutableStateOf(initialCalendar?.events.orEmpty()) }
+    var detectedCalendarPdfUrl by remember(semester.id) { mutableStateOf(initialCalendar?.pdfUrl) }
     var calendarYear by remember { mutableStateOf(CourseArrangementProfile.schoolYear().substringBefore("-").toInt()) }
     var showPdf by remember { mutableStateOf(false) }
-    var previewDays by remember { mutableStateOf(emptyList<AcademicDay>()) }
+    var previewDays by remember(semester.id) { mutableStateOf(
+        initialCalendar?.days.orEmpty() + listOf(calendarYear, calendarYear + 1)
+            .flatMap { OfficialHolidayApi.cached(context, it, semester.id) }
+            .filter { day -> initialCalendar?.detectedSemesters().orEmpty().let { terms ->
+                if (terms.isEmpty()) day.date in semester.startDate..semester.startDate.plusWeeks(semester.totalWeeks.toLong())
+                else terms.any { it.contains(day.date) }
+            } }
+
+    ) }
     var chooseSemester by remember { mutableStateOf(false) }
     var choosingStartDate by remember(semester.id) { mutableStateOf(false) }
-    var calendarPreview by remember { mutableStateOf(false) }
+    var calendarPreview by remember { mutableStateOf(calendarMode) }
+    var showCalendarNodes by remember { mutableStateOf(false) }
+    // Keep the entrance and scroll state here so editor detours do not replay it.
+    var calendarEntrancePlayed by rememberSaveable { mutableStateOf(false) }
+    val calendarEntrance = remember { Animatable(if (calendarEntrancePlayed) 1f else 0f) }
+    val calendarListState = rememberLazyListState()
     var upcomingOnly by remember { mutableStateOf(false) }
     var validationMessage by remember { mutableStateOf<String?>(null) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
-    var editingActivity by remember { mutableStateOf<ScheduleActivity?>(null) }
     val workingSemester = semester.copy(startDate = startDate)
     val latestSemester by rememberUpdatedState(workingSemester)
     val currentSemesterSelected = showSemesterTools && CourseArrangementProfile.isCurrentSemester(
@@ -165,6 +185,7 @@ fun SemesterScheduleSettingsScreen(
     val includedHolidaySchedules = remember(days) { buildCalendarHolidaySchedules(days) }
     val savedDayKeys = remember(days) { days.map(::academicDayKey).toSet() }
     fun canInclude(date: LocalDate): Boolean {
+        if (detectedCalendarSemesters.any { it.contains(date) }) return true
         val current = detectedCurrentSemester
         return if (current != null) current.contains(date) else {
             val today = LocalDate.now()
@@ -172,22 +193,20 @@ fun SemesterScheduleSettingsScreen(
                 SemesterCalendar.weekOf(workingSemester, date) != null
         }
     }
-    fun eventIncluded(event: SchoolCalendarEvent): Boolean = isCalendarEventIncluded(event, workingSemester, activities)
+    fun eventIncluded(event: SchoolCalendarEvent): Boolean = selections[eventSelectionKey(event)]
+        ?: isCalendarEventIncluded(event, workingSemester, activities)
     fun holidayIncluded(schedule: CalendarHolidaySchedule): Boolean =
-        calendarScheduleDays(schedule).any { academicDayKey(it) in savedDayKeys }
+        selections[holidaySelectionKey(schedule)] ?: calendarScheduleDays(schedule).any { academicDayKey(it) in savedDayKeys }
     fun select(key: String, included: Boolean) {
         selectionStore.set(key,included);selections=selectionStore.load()
     }
     suspend fun includeDefaultEvents(events: List<SchoolCalendarEvent>) {
-        val defaults = events.filter { event ->
-            val key = eventSelectionKey(event)
-            (selections[key] ?: CalendarDefaultInclusion.includes(event, enrollmentYear)) &&
-                canInclude(event.startDate) && activities.none { it.id.endsWith(":${event.id}") }
+        val changed = events.filter { event ->
+            calendarImportEvents(listOf(event)).any { node ->
+                activities.none { it.copy(sessions = emptyList()) == node.toCalendarActivity(semester.id) }
+            }
         }
-        if (defaults.isNotEmpty()) onCalendarEventsChange(defaults)
-        events.filter { selections[eventSelectionKey(it)] == null && CalendarDefaultInclusion.includes(it, enrollmentYear) }
-            .filter { canInclude(it.startDate) }
-            .forEach { select(eventSelectionKey(it), true) }
+        if (changed.isNotEmpty()) onCalendarEventsChange(changed)
     }
     fun updateCatalog(next: List<AcademicDay>) {
         fetchedDays = next
@@ -197,7 +216,7 @@ fun SemesterScheduleSettingsScreen(
         updateCatalog(fetchedDays.filterNot { academicDayKey(it) in keys })
     }
     fun toggleEvent(event: SchoolCalendarEvent) {
-        if(writing || importing || !canInclude(event.startDate)) return
+        if(writing || importing || (!eventIncluded(event) && !canInclude(event.startDate))) return
         val included=eventIncluded(event)
         writing=true
         scope.launch {
@@ -211,7 +230,7 @@ fun SemesterScheduleSettingsScreen(
         }
     }
     fun toggleHoliday(schedule: CalendarHolidaySchedule, includeMissing: Boolean = false) {
-        if(writing || importing || !canInclude(schedule.holiday?.start ?: schedule.makeup.first().start)) return
+        if(writing || importing || (!holidayIncluded(schedule) && !canInclude(schedule.holiday?.start ?: schedule.makeup.first().start))) return
         val included=holidayIncluded(schedule) && !includeMissing
         val entries=calendarScheduleDays(schedule)
         writing=true
@@ -222,6 +241,8 @@ fun SemesterScheduleSettingsScreen(
                     detectedCalendarSemesters.firstOrNull { it.contains(date) }
                         ?.let { onCalendarSemesterDetected(it, !included) }
                 }
+                select(holidaySelectionKey(schedule), !included)
+                entries.forEach { selectionStore.set("calendar-day:${it.date}:${it.kind}", !included) }
                 onTimelineDaysChange(if(included) entries else emptyList(),if(included) emptyList() else entries)
                 val first=SemesterCalendar.dateOf(workingSemester,1,1)
                 val last=SemesterCalendar.dateOf(workingSemester,workingSemester.totalWeeks,7)
@@ -233,7 +254,6 @@ fun SemesterScheduleSettingsScreen(
                     // fetched candidate visible so it can be deleted explicitly.
                     updateCatalog((fetchedDays + entries).distinctBy(::academicDayKey))
                 }
-                select(holidaySelectionKey(schedule),!included)
                 timelineStore.save((timelineStore.load()+entries).distinctBy(::academicDayKey))
             } catch(error:Exception) { syncMessage="课表更新失败，请重试" }
             finally { writing=false }
@@ -270,9 +290,11 @@ fun SemesterScheduleSettingsScreen(
                 val years = listOf(schoolYearStart, schoolYearStart + 1)
                 val schoolYear = "$schoolYearStart-${schoolYearStart + 1}"
                 val result = withContext(Dispatchers.IO) {
-                    // A refresh must finish a real school website request. Cached and
-                    // bundled data must never be reported as a successful refresh.
-                    val school = SchoolCalendarApi.loadFromWebsite(context, schoolYear, requestSemester.id)
+                    // School and holiday sources fail independently; keep the saved school
+                    // calendar usable if its website is temporarily unavailable.
+                    val school = runCatching { SchoolCalendarApi.loadFromWebsite(context, schoolYear, requestSemester.id) }
+                        .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                        .getOrNull() ?: SchoolCalendarApi.cached(context, schoolYear, requestSemester.id)
                     val official = runCatching { OfficialHolidayApi.load(context, years, requestSemester.id) }.getOrDefault(emptyList())
 
                     Triple(school, official, school?.days.orEmpty() + official)
@@ -287,12 +309,13 @@ fun SemesterScheduleSettingsScreen(
                     detectedCalendarSemesters = detected
                     detectedCurrentSemester = current
                     current?.let { onCalendarSemesterDetected(it, false) }
-                    detectedCalendarEvents = eventEdits.merge(school?.events.orEmpty())
+                    detectedCalendarEvents = school?.events.orEmpty()
                     includeDefaultEvents(detectedCalendarEvents)
                     detectedCalendarPdfUrl = school?.pdfUrl
-                    previewDays = AcademicDayRanges.normalize(result.third.filter(timelineStore::acceptsOfficial).filter { day ->
-                        detected.any { day.date in it.startDate..(it.endDate ?: it.startDate.plusMonths(5)) }
-                    } + timelineStore.load())
+                    previewDays = AcademicDayRanges.normalize(result.third.filter { day ->
+                        if (detected.isEmpty()) day.date in requestSemester.startDate..requestSemester.startDate.plusWeeks(requestSemester.totalWeeks.toLong())
+                        else detected.any { day.date in it.startDate..(it.endDate ?: it.startDate.plusMonths(5)) }
+                    })
                     if(openPreview) calendarPreview = true
                     val first = SemesterCalendar.dateOf(requestSemester, 1, 1)
                     val last = SemesterCalendar.dateOf(requestSemester, requestSemester.totalWeeks, 7)
@@ -302,26 +325,19 @@ fun SemesterScheduleSettingsScreen(
                         (current.term == requestSemester.term && current.startDate.year == requestSemester.startDate.year)
                     val allowed = previewDays.map { it.copy(name = it.name.trim(),semesterId=semester.id) }
                         .filter { appliesToSemester }
-                        .filter(candidateStore::acceptsOfficial)
                         .filter { it.date in activeStart..activeEnd }
-                        .filter { setOf("元旦","清明","劳动","端午","中秋","国庆").any { token -> it.name.contains(token) } }
                         .distinctBy { "${it.date}:${it.kind}" }
                     // Refresh the catalog without opting any item into the timetable.
                     updateCatalog((fetchedDays + allowed).distinctBy(::academicDayKey))
                     if (appliesToSemester) {
                         val firstIncluded = SemesterCalendar.dateOf(workingSemester, 1, 1)
                         val lastIncluded = SemesterCalendar.dateOf(workingSemester, workingSemester.totalWeeks, 7)
-                        val defaults = buildCalendarHolidaySchedules(allowed).filter { schedule ->
-                            val key = holidaySelectionKey(schedule)
-                            selections[key] ?: true
-                        }
-                        defaults.filter { selections[holidaySelectionKey(it)] == null }
-                            .forEach { select(holidaySelectionKey(it), true) }
+                        val defaults = buildCalendarHolidaySchedules(allowed)
                         val automaticDays = defaults.flatMap(::calendarScheduleDays)
                             .filter { it.date in firstIncluded..lastIncluded }
                             .map { it.copy(semesterId = semester.id) }
                             .distinctBy(::academicDayKey)
-                        val mergedDays = AcademicDayRanges.normalize(days + automaticDays)
+                        val mergedDays = AcademicDayRanges.normalize(days.filterNot { saved -> automaticDays.any { it.date == saved.date } } + automaticDays)
                         if (mergedDays != days) {
                             onTimelineDaysChange(emptyList(), automaticDays)
                             onAcademicDaysChange(workingSemester, mergedDays)
@@ -333,7 +349,7 @@ fun SemesterScheduleSettingsScreen(
                     calendarYear = schoolYearStart
                     if(suggestedStart != null && suggestedStart != semester.startDate)
                         onAcademicDaysChange(semester.copy(startDate=startDate),days)
-                    syncMessage = "校历已重新获取 · " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + " · " + when {
+                    syncMessage = "校历与节假日已检查 · " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + " · " + when {
                         !appliesToSemester -> "已读取当前校历，历史学期的日期保持不变"
                         current != null -> "已识别当前为${current.label}，并确定本学期起止日期"
                         detected.isNotEmpty() -> "已识别官网校历的学期日期，当前处于学期间隔"
@@ -350,22 +366,9 @@ fun SemesterScheduleSettingsScreen(
     }
 
     LaunchedEffect(semester.id) {
-        val school = withContext(Dispatchers.IO) {
-            SchoolCalendarApi.cached(context, CourseArrangementProfile.schoolYear(), semester.id)
-        }
-        detectedCalendarSemesters = school?.detectedSemesters().orEmpty()
-        detectedCurrentSemester = school?.semesterFor(LocalDate.now())
+        val school = initialCalendar
         detectedCurrentSemester?.let { onCalendarSemesterDetected(it, false) }
-        detectedCalendarEvents = eventEdits.merge(school?.events.orEmpty())
         includeDefaultEvents(detectedCalendarEvents)
-        detectedCalendarPdfUrl = school?.pdfUrl
-        previewDays = withContext(Dispatchers.IO) {
-            val semesters = school?.detectedSemesters().orEmpty()
-            semesters.flatMap { detected ->
-                (detected.startDate.year..(detected.endDate?:detected.startDate.plusMonths(5)).year)
-                    .flatMap { OfficialHolidayApi.cached(context,it,semester.id) }.filter { detected.contains(it.date) }
-            }.filter(timelineStore::acceptsOfficial) + timelineStore.load()
-        }
         officialStartDate = school?.let { CourseArrangementProfile.teachingStart(it, enrollmentYear) }
         val today=LocalDate.now()
         val current=school?.semesterFor(today)
@@ -445,17 +448,17 @@ fun SemesterScheduleSettingsScreen(
                     val first=SemesterCalendar.dateOf(semester,1,1)
                     val last=SemesterCalendar.dateOf(semester,semester.totalWeeks,7)
                     val included=holidayIncluded(schedule)
+                    candidateStore.keepCustomization(calendarScheduleDays(schedule) + replacement)
+                    timelineStore.keepCustomization(calendarScheduleDays(schedule) + replacement)
+                    select(holidaySelectionKey(schedule), false)
+                    buildCalendarHolidaySchedules(replacement).forEach { select(holidaySelectionKey(it), included) }
                     if(included) {
                         onTimelineDaysChange(calendarScheduleDays(schedule),replacement)
                         days=AcademicDayRanges.normalize(days.filterNot { academicDayKey(it) in originalKeys } + replacement.filter { it.date in first..last }.map { it.copy(semesterId=semester.id) })
                     }
-                    candidateStore.keepCustomization(calendarScheduleDays(schedule) + replacement)
                     updateCatalog(fetchedDays.filterNot { academicDayKey(it) in originalKeys } + replacement.filter { it.date in first..last })
-                    timelineStore.keepCustomization(calendarScheduleDays(schedule) + replacement)
                     timelineStore.save(timelineStore.load().filterNot { academicDayKey(it) in originalKeys }+replacement)
                     previewDays=previewDays.filterNot { academicDayKey(it) in originalKeys }+replacement
-                    select(holidaySelectionKey(schedule),false)
-                    buildCalendarHolidaySchedules(replacement).forEach { select(holidaySelectionKey(it),included) }
                     editingTimelineHoliday=false;editingSchedule=null
                     editorError=null
                 } catch(error:Exception){editorError="日期保存失败，请重试"} finally {writing=false}
@@ -466,13 +469,19 @@ fun SemesterScheduleSettingsScreen(
     if (calendarPreview) {
         CalendarPreviewScreen(
             year = calendarYear,
-            days = (previewDays + fetchedDays + days).distinctBy { "${it.date}:${it.kind}" }.sortedBy { it.date },
-            semesters = detectedCalendarSemesters,
+            days = previewDays.ifEmpty { days }.distinctBy { "${it.date}:${it.kind}" }.sortedBy { it.date },
+            semesters = detectedCalendarSemesters.ifEmpty {
+                val firstYear = semester.startDate.year - if (semester.term == cn.qztc.timetable.core.domain.model.Term.SPRING) 1 else 0
+                listOf(DetectedSchoolSemester("$firstYear-${firstYear + 1}", semester.term,
+                    if (semester.term == cn.qztc.timetable.core.domain.model.Term.SPRING) "第二学期" else "第一学期",
+                    semester.startDate, semester.startDate.plusWeeks(semester.totalWeeks.toLong()).minusDays(1)))
+            },
             events = detectedCalendarEvents,
             pdfUrl = detectedCalendarPdfUrl,
             upcomingOnly = upcomingOnly,
             canInclude = ::canInclude,
-            onBack = { calendarPreview = false; upcomingOnly = false },
+            onBack = { if (calendarMode) onBack() else { calendarPreview = false; upcomingOnly = false } },
+            onActivities = null,
             onEditEvent = { if(!writing&&!importing) {editorError=null;editingEvent=it} },
             onEditHoliday = { if(!writing&&!importing) {editorError=null;editingTimelineHoliday=true;editingSchedule=it} },
             eventIncluded=::eventIncluded,holidayIncluded=::holidayIncluded,
@@ -488,61 +497,34 @@ fun SemesterScheduleSettingsScreen(
             message=syncMessage,
             onOpenPdf = { showPdf = true },
             onRefresh = { loadOfficialHolidays(openPreview = true) },
-        )
-        return
-    }
-    editingActivity?.let { original ->
-        ActivityEditPage(
-            title = if (original.name.isBlank()) "添加活动" else "编辑活动",
-            editorKey = original.id,
-            initial = original.toEditDraft(
-                fallbackWeekday = 1,
-                fallbackDate = startDate,
-                totalWeeks = semester.totalWeeks,
-            ),
-            presetColors = activityPresetColors,
-            totalWeeks = semester.totalWeeks,
-            showDelete = original.name.isNotBlank() && !original.id.startsWith("calendar-event:"),
-            showHide = original.id.startsWith("calendar-event:"),
-            onBack = { editingActivity = null },
-            onSave = { draft ->
-                scope.launch {
-                    runCatching { onSaveActivity(draft.toScheduleActivity(semester.id)) }
-                        .onSuccess { editingActivity = null; syncMessage = "活动已同步到课表" }
-                        .onFailure { syncMessage = it.message ?: "活动保存失败" }
-                }
-            },
-            onDelete = {
-                scope.launch {
-                    runCatching { onDeleteActivity(original.id) }
-                        .onSuccess { editingActivity = null; syncMessage = "活动已删除" }
-                        .onFailure { syncMessage = it.message ?: "活动删除失败" }
-                }
-            },
-            onHide = {
-                scope.launch {
-                    runCatching { onDeleteActivity(original.id) }
-                        .onSuccess {
-                            detectedCalendarEvents.firstOrNull { original.id.endsWith(":${it.id}") }
-                                ?.let { select(eventSelectionKey(it), false) }
-                            editingActivity = null
-                            syncMessage = "校历安排已从课表隐藏"
-                        }
-                        .onFailure { syncMessage = it.message ?: "隐藏失败" }
+            listState = calendarListState,
+            entrance = calendarEntrance,
+            onStartEntrance = {
+                if (!calendarEntrancePlayed) {
+                    calendarEntrancePlayed = true
+                    scope.launch {
+                        calendarEntrance.animateTo(1f, tween(575, easing = LinearEasing))
+                    }
                 }
             },
         )
         return
     }
     Column(modifier.fillMaxSize().background(colors.solid2)) {
-        CourseArrangementTopBar(semester, onBack = { if (!writing) onBack() },
-            onChoose = { chooseSemester = true })
+        if (calendarMode) {
+            QztcPageTopBar("活动安排", onBack = { if (!writing) onBack() }, actions = {
+                QztcTopIconButton(if (showCalendarNodes) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                    if (showCalendarNodes) "隐藏校历节点" else "显示校历节点",
+                    onClick = { showCalendarNodes = !showCalendarNodes })
+            })
+        }
+        else CourseArrangementTopBar(semester, onBack = { if (!writing) onBack() }, onChoose = { chooseSemester = true })
         LazyColumn(
             modifier = Modifier.weight(1f).testTag("calendar-settings-list"),
             contentPadding = PaddingValues(start = QztcSpacing.lg, end = QztcSpacing.lg, bottom = QztcSpacing.xxl),
             verticalArrangement = Arrangement.spacedBy(QztcSpacing.md),
         ) {
-            item {
+            if (!calendarMode) item {
                 val currentWeek = (java.time.temporal.ChronoUnit.DAYS.between(
                     workingSemester.startDate, LocalDate.now()) / 7 + 1).toInt().takeIf { !LocalDate.now().isBefore(workingSemester.startDate) }
                 val teachingWeeks = importedTeachingWeeks?.takeIf { it > 0 }
@@ -581,12 +563,12 @@ fun SemesterScheduleSettingsScreen(
                     }
                 }
             }
-            item {
+            if (!calendarMode) item {
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
                         .background(colors.solid).border(1.dp, colors.line, RoundedCornerShape(8.dp)),
                 ) {
-                    onImport?.let { action ->
+                    onImport?.takeUnless { calendarMode }?.let { action ->
                         Row(Modifier.fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -607,11 +589,11 @@ fun SemesterScheduleSettingsScreen(
                         }
                         HorizontalDivider(color = colors.line)
                     }
-                    if (currentSemesterSelected) {
+                    if (currentSemesterSelected && !calendarMode) {
                         ArrangementActionRow("检查停课与调课", "检查当前学期接下来是否有停课与调课安排", onClick = onViewScheduleChanges)
                         HorizontalDivider(color = colors.line)
                     }
-                    if (currentSemesterSelected) {
+                    if (currentSemesterSelected || calendarMode) {
                         ArrangementActionRow(
                             "查看校历",
                             if (importing) "正在获取最新校历…"
@@ -633,105 +615,56 @@ fun SemesterScheduleSettingsScreen(
                     Column {
                         Text("活动安排", style = QztcTypography.section, color = colors.ink)
                         if (activities.isNotEmpty()) {
-                            Text(activityArrangementSummary(activities), style = QztcTypography.meta, color = colors.mut)
+                            Text(activityArrangementSummary(activities.filterNot { it.id.startsWith("calendar-event:") }), style = QztcTypography.meta, color = colors.mut)
                         }
                     }
-                    Text("添加", modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                        .background(colors.accentSoft).clickable {
-                            val date = LocalDate.now().coerceIn(
-                                SemesterCalendar.dateOf(workingSemester, 1, 1),
-                                SemesterCalendar.dateOf(workingSemester, workingSemester.totalWeeks, 7),
-                            )
-                            editingActivity = ScheduleActivity(
-                                id = "activity:${semester.id}:${System.currentTimeMillis()}",
-                                semesterId = semester.id,
-                                name = "",
-                                kind = ActivityKind.DAY,
-                                startDate = date,
-                                endDate = date,
-                            )
-                        }.padding(horizontal = 14.dp, vertical = 9.dp),
+                    Text("在日历中管理", modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(colors.accentSoft).clickable { onOpenCalendar(LocalDate.now()) }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
                         style = QztcTypography.body, color = colors.accentDeep)
                 }
             }
-            if (activities.isNotEmpty()) {
-                items(activities, key = { it.id }) { activity ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { editingActivity = activity }.padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(activity.name, style = QztcTypography.body, color = colors.ink)
-                            val range = activity.startDate?.let { start ->
-                                val end = activity.endDate ?: start
-                                if (start == end) calendarDateLabel(start) else "${calendarDateLabel(start)} - ${calendarDateLabel(end)}"
-                            } ?: "按课程时间"
-                            Text(
-                                listOf(range, activity.note.takeUnless { it == "官网校历标注为暂定时间" }.orEmpty())
-                                    .filter { it.isNotBlank() }.joinToString(" · "),
-                                style = QztcTypography.meta,
-                                color = colors.mut,
-                            )
+            val managementEntries = buildList<CalendarManagementEntry> {
+                activities.filterNot { it.id.startsWith("calendar-event:") }.forEach { activity ->
+                    val date = if (activity.memoTime != null) activity.memoTime?.date else activity.startDate ?: activity.effectiveSessions().flatMap { session ->
+                        session.date?.let(::listOf) ?: session.weeks.map { week ->
+                            SemesterCalendar.dateOf(workingSemester, week, session.weekday ?: 1)
                         }
-                        Icon(Icons.Outlined.Edit, contentDescription = "编辑活动", tint = colors.mut)
-                    }
-                    HorizontalDivider(color = colors.line)
+                    }.minOrNull()
+                    val range = activity.memoTime?.label() ?: date?.let { calendarDateRangeLabel(it, activity.endDate) } ?: "按课程时间"
+                    add(CalendarManagementEntry(activity.id, activity.name, date,
+                        listOf(range, activity.note).filter { it.isNotBlank() }.joinToString(" · ")))
                 }
-            }
-            if (activities.isEmpty()) {
-                item { Text("暂无活动安排", style = QztcTypography.meta, color = colors.mut) }
-            }
-            item {
-                Text("节假日安排", style = QztcTypography.section, color = colors.ink)
-            }
-            if (includedHolidaySchedules.isNotEmpty()) {
-                items(includedHolidaySchedules, key = { "included-holiday:${holidaySelectionKey(it)}" }) { schedule ->
-                    CalendarSwipeRow(
-                        key = "included-holiday:${holidaySelectionKey(schedule)}",
-                        included = true,
-                        enabled = !writing && !importing,
-                        onEdit = { editorError = null; editingSchedule = schedule },
-                        onToggle = { toggleHoliday(schedule) },
-                        onRightSwipe = { toggleHoliday(schedule) },
-                        showStatus = true,
-                        canToggle = canInclude(schedule.holiday?.start ?: schedule.makeup.first().start),
-                    ) {
-                        val holiday = schedule.holiday
-                        Text(
-                            "${holiday?.let { calendarDateRangeLabel(it.start, it.end) } ?: ""}  ${holiday?.name ?: "调休"}",
-                            style = QztcTypography.body,
-                            color = colors.ink,
-                        )
-                        Text(holidayMakeupSummary(schedule), style = QztcTypography.meta, color = colors.mut)
+                if (showCalendarNodes) {
+                    calendarImportEvents(detectedCalendarEvents).forEach { event ->
+                        add(CalendarManagementEntry("school:${event.id}", event.name, event.startDate,
+                            calendarDateRangeLabel(event.startDate, event.endDate)))
                     }
+                    AcademicDayRanges.group(previewDays.ifEmpty { days }.distinctBy(::academicDayKey))
+                        .forEach { range ->
+                            val kind = range.days.first().kind
+                            add(CalendarManagementEntry("school-day:${range.start}:$kind",
+                                range.name, range.start,
+                                "${calendarDateRangeLabel(range.start, range.end)} · ${if (kind == AcademicDayKind.MAKEUP) "调休" else "放假"}"))
+                        }
                 }
+            }.sortedWith(compareBy<CalendarManagementEntry> { it.date ?: LocalDate.MAX }.thenBy { it.name })
+            items(managementEntries, key = { it.id }) { entry ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    Text(entry.name, style = QztcTypography.body, color = colors.ink)
+                    Text(entry.detail, style = QztcTypography.meta, color = colors.mut)
+                }
+                HorizontalDivider(color = colors.line)
             }
+            if (managementEntries.isEmpty()) item { Text("暂无活动安排", style = QztcTypography.meta, color = colors.mut) }
             validationMessage?.let { item { Text(it, style = QztcTypography.meta, color = colors.danger) } }
             if (!importing) syncMessage?.let { item { Text(it, style = QztcTypography.meta, color = colors.mut) } }
-            if (includedHolidaySchedules.isEmpty() && pendingHolidaySuggestions.isEmpty()) {
-                item { Text("暂无后续安排", style = QztcTypography.meta, color = colors.mut) }
-            }
-            if (pendingHolidaySuggestions.isNotEmpty()) {
-                item { Text("接下来的停课与调课安排", style = QztcTypography.section, color = colors.mut) }
-                items(pendingHolidaySuggestions, key = { it.key }) { suggestion ->
-                    CalendarSwipeRow(
-                        key = suggestion.key,
-                        included = false,
-                        enabled = !writing && !importing,
-                        onEdit = { editorError=null;editingSchedule = suggestion.schedule },
-                        onToggle = { toggleHoliday(suggestion.schedule, includeMissing = true) },
-                        onRightSwipe = { toggleHoliday(suggestion.schedule, includeMissing = true) },
-                        onLeftSwipe = { removeHolidaySuggestion(suggestion) },
-                        canToggle = canInclude(suggestion.schedule.holiday?.start ?: suggestion.schedule.makeup.first().start),
-                    ) {
-                        suggestion.schedule.holiday?.let { Text("${calendarDateRangeLabel(it.start,it.end)}  ${it.name}",style=QztcTypography.body,color=colors.ink) }
-                        Text(holidayMakeupSummary(suggestion.schedule),style=QztcTypography.meta,color=colors.mut)
-                    }
-                }
-            }
+
         }
     }
 }
+
+private data class CalendarManagementEntry(val id: String, val name: String, val date: LocalDate?, val detail: String)
 
 @Composable
 private fun ArrangementStat(label: String, value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
@@ -849,17 +782,21 @@ private fun CalendarPreviewScreen(
     onRemoveHoliday: (CalendarHolidaySchedule) -> Unit,
     enabled: Boolean,
     message: String?,
+    listState: LazyListState,
+    entrance: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    onStartEntrance: () -> Unit,
     refreshing: Boolean = false,
+    onActivities: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val colors = LocalQztcColors.current
-    var mode by remember { mutableStateOf(CalendarTimelineMode.ALL) }
+    val mode = CalendarTimelineMode.ALL
     val today = LocalDate.now()
     val visibleDays = remember(days, upcomingOnly, today) { if (upcomingOnly) days.filter { !it.date.isBefore(today) } else days }
     val visibleEvents = remember(events, upcomingOnly, today) {
         if (upcomingOnly) events.filter { !(it.endDate ?: it.startDate).isBefore(today) } else events
     }
-    val holidaySchedules = remember(visibleDays,semesters) { buildCalendarHolidaySchedules(CalendarHolidayPlanning.supplement(semesters,visibleDays)) }
+    val holidaySchedules = remember(visibleDays,semesters) { buildCalendarHolidaySchedules(visibleDays) }
     val timelines = remember(semesters, visibleEvents, holidaySchedules, mode, upcomingOnly, today) {
         buildCalendarTimelines(semesters, visibleEvents, holidaySchedules, mode).mapNotNull { timeline ->
             if (!upcomingOnly) timeline else timeline.copy(
@@ -867,20 +804,21 @@ private fun CalendarPreviewScreen(
             ).takeIf { it.entries.isNotEmpty() }
         }
     }
+    LaunchedEffect(timelines.isNotEmpty()) {
+        if (timelines.isNotEmpty()) onStartEntrance()
+    }
     val title = if (upcomingOnly) "停课与调课" else semesters.firstOrNull()?.schoolYear?.let { "$it 学年校历" } ?: "$year 年校历"
     Column(Modifier.fillMaxSize().background(colors.solid2)) {
         QztcPageTopBar(title = title, onBack = onBack, actions = {
-            if (pdfUrl != null) QztcTopIconButton(
-                icon = Icons.Outlined.Visibility,
-                contentDescription = "查看校历原文件",
-                onClick = onOpenPdf,
-            )
+            val rotation = if (refreshing) {
             val transition = rememberInfiniteTransition(label = "calendar-refresh")
-            val rotation by transition.animateFloat(
+            val angle by transition.animateFloat(
                 initialValue = 0f, targetValue = 360f,
                 animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
                 label = "calendar-refresh-rotation",
             )
+            angle
+            } else 0f
             QztcTopIconButton(
                 icon = Icons.Outlined.Refresh,
                 contentDescription = "重新获取校历",
@@ -888,45 +826,61 @@ private fun CalendarPreviewScreen(
                 enabled = enabled,
                 modifier = Modifier.rotate(if (refreshing) rotation else 0f),
             )
+            if (pdfUrl != null) QztcTopIconButton(
+                icon = Icons.Outlined.Visibility,
+                contentDescription = "查看校历原文件",
+                onClick = onOpenPdf,
+            )
         })
         LazyColumn(
             Modifier.weight(1f).testTag("calendar-preview-list"),
+            state = listState,
             contentPadding = PaddingValues(QztcSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(QztcSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            item {
-                Text("活动安排", style = QztcTypography.section, color = colors.ink)
-                Row(
-                    Modifier.fillMaxWidth().padding(top = QztcSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(QztcSpacing.sm),
-                ) {
-                    CalendarTimelineModeButton(
-                        label = "总时间线",
-                        selected = mode == CalendarTimelineMode.ALL,
-                        onClick = { mode = CalendarTimelineMode.ALL },
-                        modifier = Modifier.weight(1f),
-                    )
-                    CalendarTimelineModeButton(
-                        label = "放假与调休",
-                        selected = mode == CalendarTimelineMode.HOLIDAYS,
-                        onClick = { mode = CalendarTimelineMode.HOLIDAYS },
-                        modifier = Modifier.weight(1f),
-                    )
+            timelines.forEachIndexed { timelineIndex, timeline ->
+                item(key = "timeline:$timelineIndex:header") {
+                    Text("${calendarDateRangeLabel(timeline.startDate, timeline.endDate)}  ${timeline.label}",
+                        style = QztcTypography.section, color = colors.ink)
+                    HorizontalDivider(Modifier.padding(top = QztcSpacing.sm), color = colors.line2)
                 }
-            }
-            items(timelines, key = { it.label }) { timeline ->
-                CalendarSemesterTimeline(timeline,enabled=enabled,
-                    canInclude=canInclude,
-                    included={ entry -> entry.event?.let(eventIncluded) ?: entry.holiday?.let(holidayIncluded) ?: false },
-                    onToggle={ entry -> entry.event?.let(onToggleEvent);entry.holiday?.let(onToggleHoliday) },
-                    onRemoveHoliday=onRemoveHoliday,
-                    allowHolidayRemoval=upcomingOnly,
-                    onEdit={ entry -> entry.event?.let(onEditEvent);entry.holiday?.let(onEditHoliday) })
+                itemsIndexed(timeline.entries, key = { index, _ -> "timeline:$timelineIndex:entry:$index" }) { index, entry ->
+                    val entranceIndex = timelines.take(timelineIndex).sumOf { it.entries.size } + index
+                    val isIncluded = entry.event?.let(eventIncluded) ?: entry.holiday?.let(holidayIncluded) ?: false
+                    val actionable = entry.event != null || entry.holiday != null
+                    val key = entry.event?.let(::eventSelectionKey) ?: entry.holiday?.let(::holidaySelectionKey)
+                        ?: "date:${entry.startDate}:${entry.name}"
+                    Column(Modifier.graphicsLayer {
+                        // Read progress in the draw phase; scrolling never launches an animation.
+                        val fraction = if (entranceIndex < 8) {
+                            ((entrance.value * 575f - entranceIndex * 45f) / 260f).coerceIn(0f, 1f)
+                        } else 1f
+                        val eased = FastOutSlowInEasing.transform(fraction)
+                        alpha = eased
+                        translationY = 20.dp.toPx() * (1f - eased)
+                    }) {
+                    CalendarTimelineEntryRow(entry, isLast = index == timeline.entries.lastIndex,
+                        active = today in entry.startDate..(entry.endDate ?: entry.startDate))
+                    val next = timeline.entries.getOrNull(index + 1)?.startDate
+                    if (today > (entry.endDate ?: entry.startDate) && next != null && today < next) CalendarTodayMarker(today)
+                    }
+                }
             }
             if (timelines.isEmpty()) item {
                 Text("当前校历没有可显示的活动安排", style = QztcTypography.body, color = colors.mut)
             }
             message?.let { item { Text(it, style = QztcTypography.meta, color = if (it.contains("失败")) colors.danger else colors.mut) } }
+        }
+    }
+}
+
+@Composable
+private fun CalendarManagementTabs(calendar: Boolean, onSwitch: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = QztcSpacing.lg), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("校历", "活动安排").forEachIndexed { index, label ->
+            val selected = calendar == (index == 0)
+            androidx.compose.material3.FilterChip(selected = selected, onClick = { if (!selected) onSwitch() },
+                label = { Text(label) }, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -969,16 +923,12 @@ private fun CalendarSemesterTimeline(timeline: CalendarSemesterTimelineModel, en
             val between=today>(entry.endDate?:entry.startDate) && next!=null && today<next
             val key=entry.event?.let(::eventSelectionKey) ?: entry.holiday?.let(::holidaySelectionKey) ?: "date:${entry.startDate}:${entry.name}"
             val actionable = entry.event != null || entry.holiday != null
-            val leftSwipe: (() -> Unit)? = if (allowHolidayRemoval && entry.holiday != null && !included(entry)) {
-                { onRemoveHoliday(entry.holiday) }
-            } else null
             CalendarSwipeRow(
                 key,
                 included(entry),
                 enabled && actionable,
                 onToggle={onToggle(entry)},
                 onRightSwipe={onToggle(entry)},
-                onLeftSwipe=leftSwipe,
                 onEdit={onEdit(entry)},
                 showStatus=actionable && shouldShowCalendarStatus(included(entry), canInclude(entry.startDate)),
                 canToggle=canInclude(entry.startDate),
@@ -1191,7 +1141,7 @@ private fun buildCalendarTimelines(
             ?: semesters.minByOrNull { kotlin.math.abs(java.time.temporal.ChronoUnit.DAYS.between(date, it.startDate)) }?.label
             .orEmpty()
 
-    val eventEntries = events
+    val eventEntries = calendarImportEvents(events)
         .filter { mode == CalendarTimelineMode.ALL || it.type == SchoolCalendarEventType.BREAK }
         .map { event ->
             CalendarTimelineEntry(

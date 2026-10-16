@@ -32,7 +32,6 @@ internal fun CalendarSwipeRow(
     key: String, included: Boolean, enabled: Boolean, onToggle: () -> Unit,
     onEdit: () -> Unit, showStatus: Boolean = true,
     onRightSwipe: (() -> Unit)? = null,
-    onLeftSwipe: (() -> Unit)? = null,
     canToggle: Boolean = true,
     content: @Composable () -> Unit,
 ) {
@@ -44,15 +43,12 @@ internal fun CalendarSwipeRow(
     val limit = with(LocalDensity.current) { 120.dp.toPx() }
     val toggle by rememberUpdatedState(onToggle)
     val rightAction = if (included) "解锁" else "采纳"
-    val leftAction = if (included) "已锁定" else "删除"
+    val latestRight by rememberUpdatedState(onRightSwipe)
     val rightColor = if (included) colors.warn else colors.okInk
     Box(Modifier.fillMaxWidth().clipToBounds().testTag("calendar-swipe-$key").semantics {
         customActions = buildList {
             add(CustomAccessibilityAction(if (included) "解锁" else "采纳") {
                 if (enabled && canToggle) { (onRightSwipe ?: toggle)(); true } else false
-            })
-            if (onLeftSwipe != null) add(CustomAccessibilityAction("删除") {
-                if (enabled && canToggle && !included) { onLeftSwipe(); true } else false
             })
         }
     }.clickable(enabled=enabled,onClick=onEdit).pointerInput(key,included,enabled,canToggle) {
@@ -60,14 +56,13 @@ internal fun CalendarSwipeRow(
             onDragStart={dragging=true},
             onHorizontalDrag={ change, amount -> if(enabled && canToggle) {
                 change.consume()
-                val minimum = if (!included && onLeftSwipe != null) -limit else 0f
-                offset = (offset + amount).coerceIn(minimum, limit)
+                offset = (offset + amount).coerceIn(if (included) -limit else 0f, limit)
             } },
             onDragEnd={
                 if (enabled && canToggle) {
                     when {
-                        offset >= threshold -> (onRightSwipe ?: toggle)()
-                        offset <= -threshold && !included -> onLeftSwipe?.invoke()
+                        offset >= threshold -> (latestRight ?: toggle)()
+                        included && offset <= -threshold -> toggle()
                     }
                 }
                 offset=0f;dragging=false
@@ -75,7 +70,8 @@ internal fun CalendarSwipeRow(
             onDragCancel={offset=0f;dragging=false},
         )
     }) {
-        if (animated != 0f) Row(Modifier.matchParentSize(), verticalAlignment=Alignment.CenterVertically) {
+        if (animated != 0f) Row(Modifier.matchParentSize(), verticalAlignment=Alignment.CenterVertically,
+            horizontalArrangement = if (animated < 0f) Arrangement.End else Arrangement.Start) {
             Row(
                 Modifier.fillMaxHeight().width(120.dp).background(rightColor).padding(start=16.dp),
                 verticalAlignment=Alignment.CenterVertically,
@@ -83,16 +79,6 @@ internal fun CalendarSwipeRow(
                 Icon(if (included) Icons.Outlined.EventBusy else Icons.Outlined.EventAvailable, null, tint=colors.solid)
                 Spacer(Modifier.width(6.dp))
                 Text(rightAction,color=colors.solid,style=QztcTypography.meta)
-            }
-            Spacer(Modifier.weight(1f))
-            Row(
-                Modifier.fillMaxHeight().width(120.dp).background(colors.danger).padding(end=16.dp),
-                verticalAlignment=Alignment.CenterVertically,
-                horizontalArrangement=Arrangement.End,
-            ) {
-                Text(leftAction,color=colors.solid,style=QztcTypography.meta)
-                Spacer(Modifier.width(6.dp))
-                Icon(Icons.Outlined.EventBusy,null,tint=colors.solid)
             }
         }
         Row(

@@ -287,6 +287,9 @@ fun CampusRouteScreen(
             title = when(initialMode) { "edit" -> "地图编辑设置"; "pick" -> "选择地点"; else -> "校园地图" },
             onBack = onBack,
             actions = {
+                if (amapConfigured) {
+                    TextButton(onClick = { showLocationConsent = true }) { Text("定位设置") }
+                }
                 if (initialMode == "view") {
                     cn.qztc.timetable.core.ui.theme.QztcTopIconButton(
                         icon = Icons.Outlined.Edit,
@@ -402,7 +405,7 @@ fun CampusRouteScreen(
             onDismissRequest = { choose(false) },
             title = { Text("启用高德定位") },
             text = { Column {
-                Text("为改善校园定位，高德定位 SDK 会处理位置信息、设备及网络信息（包括 Wi-Fi、基站信息），并连接高德服务。仅在地图前台使用，退出后停止；不同意仍可使用系统定位和手动选点。可在隐私与关于中关闭。")
+                Text("为改善校园定位，高德定位 SDK 会处理位置信息、设备及网络信息（包括 Wi-Fi、基站信息），并连接高德服务。仅在地图前台使用，退出后停止；不同意仍可使用系统定位和手动选点。可在地图右上角的定位设置中切换。")
                 TextButton(onClick = {
                     runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://lbs.amap.com/pages/privacy/"))) }
                 }) { Text("高德隐私政策") }

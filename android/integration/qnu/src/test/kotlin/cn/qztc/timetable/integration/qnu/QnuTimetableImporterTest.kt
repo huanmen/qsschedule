@@ -13,6 +13,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QnuTimetableImporterTest {
+    @Test fun `notification import ignores grid and handles no notifications`() {
+        val html = String(changesBytes, charset("GBK"))
+        val result = QnuTimetableImporter.importChangesHtml(html, "s1")
+        assertTrue(result.state.meetings.isEmpty())
+        // This fixture has cancellation badges only in the grid. They must be ignored.
+        assertTrue(result.state.exceptions.none { it.type == ExceptionType.CANCEL })
+        assertTrue(result.state.exceptions.any { it.type == ExceptionType.MOVE })
+        assertTrue(!result.hasErrors)
+        val cancellation = QnuTimetableImporter.importChangesHtml("""
+            <div id="title">2026 秋 学生课表</div><table id="timetable"></table>
+            <table><tr><th>调停课通知</th></tr><tr>
+            <td>停课</td><td>TEST01</td><td>测试课程</td><td>1</td><td>教师</td><td></td><td>2</td>
+            <td>10-12</td><td>7</td><td>一</td><td>1-2</td><td>A</td>
+            <td></td><td></td><td></td><td></td><td></td></tr></table>
+        """.trimIndent(), "s1")
+        assertTrue(!cancellation.hasErrors)
+        assertEquals(ExceptionType.CANCEL, cancellation.state.exceptions.single().type)
+        assertEquals(7, cancellation.state.exceptions.single().original?.week)
+        assertTrue(cancellation.state.meetings.isEmpty())
+        val empty = QnuTimetableImporter.importChangesHtml("<div id='title'>2026 秋 学生课表</div><table id='timetable'><td id='1-1'>bad grid</td></table>", "s1")
+        assertTrue(!empty.hasErrors)
+        assertTrue(empty.state.exceptions.isEmpty())
+        assertTrue(empty.state.courses.isEmpty())
+    }
     @Test fun `ambiguous cancellation in main type never cancels a whole term`() {
         val page=QnuParsedPage(gridEntries=listOf(QnuGridEntry(1,1,"测试课","1","A","教师","1-16周","停课")))
         val result=QnuTimetableImporter.map(page)

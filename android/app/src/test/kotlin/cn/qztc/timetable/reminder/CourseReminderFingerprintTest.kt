@@ -37,4 +37,15 @@ class CourseReminderFingerprintTest {
         assertEquals("disabled", CourseReminderScheduler.fingerprint(schedule, false, 15, ReminderDisplayMode.SCREEN_POPUP, emptyMap(), emptyMap(), now))
         assertEquals("no-schedule", CourseReminderScheduler.fingerprint(null, true, 15, ReminderDisplayMode.SCREEN_POPUP, emptyMap(), emptyMap(), now))
     }
+    @Test fun holidayOptInRestoresOriginalCourseButKeepsMakeupTeaching() {
+        val holiday=cn.qztc.timetable.core.domain.calendar.AcademicDay("holiday",semester.id,now.toLocalDate(),
+            cn.qztc.timetable.core.domain.calendar.AcademicDayKind.HOLIDAY,"放假")
+        val marked=schedule.copy(academicDays=listOf(holiday))
+        fun value(on:Boolean)=CourseReminderScheduler.fingerprint(marked,true,15,ReminderDisplayMode.SCREEN_POPUP,emptyMap(),emptyMap(),now,on)
+        assertFalse(value(false).contains(course.name))
+        assertTrue(value(true).contains(course.name))
+        val makeup=holiday.copy(kind=cn.qztc.timetable.core.domain.calendar.AcademicDayKind.MAKEUP,sourceWeek=1,sourceWeekday=1)
+        val adjusted=schedule.copy(academicDays=listOf(makeup))
+        assertTrue(CourseReminderScheduler.fingerprint(adjusted,true,15,ReminderDisplayMode.SCREEN_POPUP,emptyMap(),emptyMap(),now,false).contains(course.name))
+    }
 }

@@ -49,4 +49,5 @@ include(
     ":integration:qnu-android",
     ":feature:timetable",
     ":feature:settings",
+    ":tools:adskip-fixture",
 )

@@ -28,6 +28,8 @@ object QnuTimetableParser {
     private val weekdayNames = mapOf(
         "周一" to 1, "周二" to 2, "周三" to 3, "周四" to 4,
         "周五" to 5, "周六" to 6, "周日" to 7, "周天" to 7,
+        "一" to 1, "二" to 2, "三" to 3, "四" to 4,
+        "五" to 5, "六" to 6, "日" to 7, "天" to 7,
     )
     private val periodRange = Regex("""^(\d{1,2})(?:-(\d{1,2}))?$""")
 
@@ -62,6 +64,18 @@ object QnuTimetableParser {
             )
         }
         return parseDocument(document)
+    }
+
+    /** Read only the dated notices below the timetable; grid badges are not notices. */
+    fun parseChangesHtml(html: String): QnuParsedPage {
+        if (html.isBlank()) return QnuParsedPage(diagnostics = listOf(ImportDiagnostic.error("EMPTY_INPUT", "页面内容为空")))
+        val document = Jsoup.parse(html)
+        val diagnostics = mutableListOf<ImportDiagnostic>()
+        val (year, term) = parseTitle(document, diagnostics)
+        val grid = findTimetableGrid(document)
+        if (grid == null) diagnostics += ImportDiagnostic.error("NO_TIMETABLE", "课表页面未加载")
+        return QnuParsedPage(yearText = year, termText = term,
+            changeDetails = parseChangeDetails(document, grid, diagnostics), diagnostics = diagnostics)
     }
 
     fun matchCourseProfile(
@@ -311,7 +325,7 @@ object QnuTimetableParser {
 
     private fun parseChangeDetails(
         document: Document,
-        timetableGrid: Element,
+        timetableGrid: Element?,
         diagnostics: MutableList<ImportDiagnostic>,
     ): List<QnuChangeDetail> {
         val detailRows: (Element) -> Boolean = { table ->
@@ -332,7 +346,13 @@ object QnuTimetableParser {
                     val detail = QnuChangeDetail(
                         typeText = texts[0].orEmpty(),
                         courseCode = texts[1],
-                        courseName = texts[2],
+                        courseName = cells[2].let { cell ->
+                            val titles = (listOf(cell.attr("title")) + cell.select("[title]").map { it.attr("title") })
+                                .mapNotNull(::cleanText).filter { it.isNotBlank() }
+                            val visible = texts[2].orEmpty()
+                            titles.filter { it.startsWith(visible.trimEnd('.', '…')) || visible.contains('…') || visible.contains("...") }
+                                .maxByOrNull { it.length } ?: texts[2]
+                        },
                         sequence = texts[3],
                         teacher = texts[4],
                         substituteTeacher = texts[5],

@@ -99,7 +99,7 @@ fun QnuAccountSettingsScreen(
                     Text(it, style = QztcTypography.meta, color = colors.danger)
                 }
                 Text(
-                    "凭据由 Android Keystore 加密，仅用于教务登录页自动填充。后台同步优先复用现有会话。",
+                    "凭据由 Android Keystore 加密，用于课表导入及你打开成绩页时自动登录。后台同步只复用已有会话。",
                     style = QztcTypography.meta,
                     color = colors.mut,
                 )

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -120,12 +121,16 @@ fun QnuImportScreen(
     onSnapshotSaved: () -> Unit = {},
     syncOnly: Boolean = false,
     automaticCheck: Boolean = false,
+    automaticImport: Boolean = false,
+    showAutomaticCheck: Boolean = false,
+    campusNetworkChecked: Boolean = false,
     onCheckFailed: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val colors = LocalQztcColors.current
+    val backgroundCheck = automaticCheck && !showAutomaticCheck
     val scope = rememberCoroutineScope()
     val capture = remember { QnuWebSessionCapture() }
     val sessionStore = remember(context) { QnuSessionStore(context) }
@@ -146,7 +151,7 @@ fun QnuImportScreen(
     var pendingSemester by remember { mutableStateOf<QnuSchoolSemester?>(null) }
     var showSemesterPicker by remember { mutableStateOf(false) }
     var semesterPickerOffered by remember { mutableStateOf(false) }
-    var intranetGate by remember { mutableStateOf(IntranetGate.Checking) }
+    var intranetGate by remember { mutableStateOf(if (campusNetworkChecked) IntranetGate.Ready else IntranetGate.Checking) }
     var pageLoading by remember { mutableStateOf(true) }
     var showAccount by remember { mutableStateOf(false) }
     var personalBuffer by remember { mutableStateOf<ImportedTimetable?>(null) }
@@ -201,6 +206,7 @@ fun QnuImportScreen(
 
     LaunchedEffect(Unit) {
         diagnostics.record("open_import")
+        if (campusNetworkChecked) return@LaunchedEffect
         intranetGate = if (withContext(Dispatchers.IO) { QnuIntranetProbe.isReachable() }) {
             IntranetGate.Ready
         } else {
@@ -230,9 +236,14 @@ fun QnuImportScreen(
             webView?.apply {
                 stopLoading()
                 clearHistory()
+                // 教务页面只用于本次导入；清理网页资源缓存，避免每次退出都留下大体积文件。
+                clearCache(true)
+                android.webkit.WebStorage.getInstance().apply {
+                    deleteOrigin("https://jw.qztc.edu.cn")
+                    deleteOrigin("https://id.qztc.edu.cn")
+                }
                 // The academic portal can leave tens of megabytes of page assets in
                 // WebView's shared cache. Cookies and the encrypted session store remain.
-                clearCache(true)
                 webViewClient = WebViewClient()
                 removeAllViews()
                 destroy()
@@ -261,13 +272,15 @@ fun QnuImportScreen(
         }
     }
 
-    fun finishMergedImport(personal: ImportedTimetable?, classTable: ImportedTimetable?) {
+    suspend fun finishMergedImport(personal: ImportedTimetable?, classTable: ImportedTimetable?) {
         personalBuffer = personal
         classBuffer = classTable
         when {
             personal != null && classTable != null -> {
-                val review = PersonalClassMerger.merge(personal.state, classTable.state)
+                val review = withContext(Dispatchers.Default) { PersonalClassMerger.merge(personal.state, classTable.state) }
                 if (review.needsReview) {
+                    webView?.stopLoading()
+                    webView?.onPause()
                     importStarted = false
                     status = "已读取个人课表和班级课表，请确认班级课表多出的课程或教师"
                     mergeReview = review
@@ -309,7 +322,7 @@ fun QnuImportScreen(
         diagnostics.record("begin_import")
         personalBuffer = null
         classBuffer = null
-        status = "正在自动读取个人课表和班级课表…"
+        status = if (syncOnly || automaticCheck) "正在检查停调课…" else "正在自动读取个人课表和班级课表…"
         importJob?.cancel()
         importJob = scope.launch {
             try {
@@ -330,13 +343,15 @@ fun QnuImportScreen(
                     failOneClick("教务页面学期与选择不一致，请重新选择学期",true)
                     return@launch
                 }
-                status = "正在读取课程安排表…"
-                diagnostics.record("read_arrangements")
+                if (!syncOnly && !automaticCheck) {
+                    status = "正在读取课程安排表…"
+                    diagnostics.record("read_arrangements")
+                }
                 // The course arrangement table is a separate menu entry on
                 // some semesters. Open it before reading, then return to the
                 // selected-semester page for the timetable links.
                 pageLoading = true
-                val arrangementOpened = !automaticCheck && openCourseArrangement(view)
+                val arrangementOpened = !syncOnly && !automaticCheck && openCourseArrangement(view)
                 if (arrangementOpened) {
                     waitUntil(20_000) {
                         !pageLoading && QnuEndpointPolicy.isTrustedAcademicUrl(currentUrl)
@@ -345,7 +360,7 @@ fun QnuImportScreen(
                 } else {
                     pageLoading = false
                 }
-                val arrangementProfiles = if (automaticCheck) emptyList() else readCourseProfiles(view)
+                val arrangementProfiles = if (syncOnly || automaticCheck) emptyList() else readCourseProfiles(view)
                 diagnostics.record(
                     if (arrangementProfiles.isEmpty()) "arrangements_missing"
                     else "arrangements_read_${arrangementProfiles.size}",
@@ -368,14 +383,21 @@ fun QnuImportScreen(
                 waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }
                 delay(450)
                 rememberSession(currentUrl)
+                if (syncOnly || automaticCheck) {
+                    status = "正在读取停调课通知…"
+                    val html = readTimetableHtml(view, READ_CHANGE_NOTICES_SCRIPT)
+                    val changes = html?.let { withContext(Dispatchers.Default) { QnuTimetableImporter.importChangesHtml(it, semesterId) } }
+                    if (changes == null || changes.hasErrors) failOneClick("通知读取失败，请重试") else onImported(changes.copy(
+                        semesterHint = cn.qztc.timetable.core.domain.imports.SemesterHint(
+                            year = semester.yearLabel.toIntOrNull(), term = QnuSemesterFactory.term(semester.termLabel),
+                            termText = semester.termLabel, raw = semester.label)
+                    ))
+                    return@launch
+                }
                 status = "正在解析个人课表…"
                 diagnostics.record("parse_personal")
                 val personal = parseTimetableFromWebView(view, semesterId, "个人课表") { personalReason = it }
                     ?.let { QnuTimetableImporter.applyCourseProfiles(it, arrangementProfiles) }
-                if(syncOnly || automaticCheck) {
-                    if(personal==null) failOneClick(personalReason) else onImported(personal)
-                    return@launch
-                }
 
                 status = "正在打开班级课表…"
                 pageLoading=true
@@ -474,19 +496,16 @@ fun QnuImportScreen(
                     onImported(source.copy(state = merged, diagnostics = source.diagnostics))
                 }
             },
-            onBack = { mergeReview = null },
+            onBack = { mergeReview = null; webView?.onResume() },
         )
         return
     }
 
     if (intranetGate != IntranetGate.Ready) {
-        if (automaticCheck) return
-        Column(modifier.fillMaxSize().background(colors.solid2)) {
-            QztcPageTopBar(
-                title = "教务导入",
-                onBack = onBack,
-            )
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (backgroundCheck) return
+        androidx.compose.ui.window.Dialog(onDismissRequest = onBack) {
+        androidx.compose.material3.Surface(color = colors.solid, shape = androidx.compose.material3.MaterialTheme.shapes.large) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
                 if (intranetGate == IntranetGate.Checking) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -503,7 +522,7 @@ fun QnuImportScreen(
                     ) {
                         Text("教务系统在校园网内", style = QztcTypography.pageTitle, color = colors.ink)
                         Text(
-                            "导入课表前需要先打开校园 VPN（EasyConnect）并完成连接。连上后再回到这里，App 会自动继续打开教务页面。",
+                            "请连接校园网或校园 VPN 后重试。",
                             style = QztcTypography.body,
                             color = colors.mut,
                         )
@@ -523,13 +542,13 @@ fun QnuImportScreen(
                         TextButton(
                             onClick = {
                                 operationError = null
-                                intranetGate = IntranetGate.Ready
-                                pageLoading = true
-                                operationError = null
-                                status = "正在打开教务系统"
+                                intranetGate = IntranetGate.Checking
+                                scope.launch {
+                                    intranetGate = if (withContext(Dispatchers.IO) { QnuIntranetProbe.isReachable() }) IntranetGate.Ready else IntranetGate.NeedVpn
+                                }
                             },
                         ) {
-                            Text("已连接，打开教务")
+                            Text("重新检查")
                         }
                         if (status.isNotBlank() && intranetGate == IntranetGate.NeedVpn) {
                             Text(status, style = QztcTypography.meta, color = colors.mut)
@@ -538,11 +557,12 @@ fun QnuImportScreen(
                 }
             }
         }
+        }
         return
     }
 
-    Column(if (automaticCheck) modifier.size(1.dp).alpha(0f) else modifier.fillMaxSize().background(colors.solid2)) {
-        if (!automaticCheck) {
+    Column(if (backgroundCheck) modifier.size(1.dp).alpha(0f) else modifier.fillMaxSize().background(colors.solid2)) {
+        if (!backgroundCheck) {
         QztcPageTopBar(
             title = "教务导入",
             onBack = onBack,
@@ -587,6 +607,7 @@ fun QnuImportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text("教务账号") },
+                    trailingIcon = { IconButton(onClick = { accountUser = "" }) { Icon(Icons.Outlined.Close, "清空教务账号") } },
                 )
                 OutlinedTextField(
                     value = accountPassword,
@@ -594,32 +615,31 @@ fun QnuImportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text("密码") },
+                    trailingIcon = { IconButton(onClick = { accountPassword = "" }) { Icon(Icons.Outlined.Close, "清空密码") } },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(QztcSpacing.sm)) {
-                    Button(
+                    TextButton(
                         onClick = {
                             if (accountUser.isNotBlank() && accountPassword.isNotEmpty()) {
                                 val credentials = QnuSavedCredentials(accountUser.trim(), accountPassword)
                                 onSaveCredentials(credentials)
                                 showAccount = false
                                 if (QnuEndpointPolicy.isAuthenticationUrl(currentUrl)) webView?.let { autofillCredentials(it, credentials, force = true) }
-                                status = "教务账号已加密保存，仅用于本页自动填充"
+                                status = "教务账号已加密保存，可用于课表导入及成绩查询"
                             } else {
                                 status = "请输入账号和密码后再保存"
                             }
                         },
                     ) { Text("加密保存") }
-                    if (savedCredentials != null) {
                         TextButton(
                             onClick = {
-                                accountUser = ""
-                                accountPassword = ""
-                                onClearCredentials()
+                                loginSubmitted = false; checkStarted = false; semesterPickerOffered = false
+                                selectedSemester = null; pendingSemester = null
+                                webView?.let(::openQnuLogin)
                             },
-                        ) { Text("清除") }
-                    }
+                        ) { Text("重新登录") }
                 }
             }
         }
@@ -627,14 +647,14 @@ fun QnuImportScreen(
             Text(operationError?:status,style=QztcTypography.meta,color=if(operationError!=null)colors.danger else colors.mut,modifier=Modifier.fillMaxWidth().padding(horizontal=QztcSpacing.lg,vertical=4.dp))
         }
         }
-        Box(if (automaticCheck) Modifier.size(1.dp) else Modifier.weight(1f).fillMaxWidth()) {
+        Box(if (backgroundCheck) Modifier.size(1.dp) else Modifier.weight(1f).fillMaxWidth()) {
             if(rendererFailed) {
                 Column(Modifier.padding(QztcSpacing.xl)) {
                     Text("教务网页异常退出，原课表和登录会话已保留。")
                     Button(onClick = { rendererFailed=false;pageLoading=true;diagnostics.record("retry_renderer") }) { Text("重新打开网页") }
                 }
             } else AndroidView(
-                modifier = if (automaticCheck) Modifier.requiredSize(360.dp, 600.dp) else Modifier.fillMaxSize(),
+                modifier = if (backgroundCheck) Modifier.requiredSize(360.dp, 600.dp) else Modifier.fillMaxSize(),
                 factory = {
                     if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                         WebView.setWebContentsDebuggingEnabled(true)
@@ -643,6 +663,7 @@ fun QnuImportScreen(
                         webView = view
                         view.setBackgroundColor(colors.solid2.toArgb())
                         view.settings.apply {
+                            cacheMode = WebSettings.LOAD_NO_CACHE
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             databaseEnabled = true
@@ -741,7 +762,7 @@ fun QnuImportScreen(
                                         } else {
                                             "已从加密设置中填入账号，请确认后登录"
                                         }
-                                        if (automaticCheck) {
+                                        if (automaticCheck || automaticImport) {
                                             if (savedCredentials == null) onCheckFailed("尚未保存教务账号，请先在登录教务中保存")
                                             else if (!loginSubmitted) {
                                                 loginSubmitted = true
@@ -767,12 +788,12 @@ fun QnuImportScreen(
                                                 importStarted -> {
                                                     if (selectedSemester == null) selectedSemester = pageSemester
                                                 }
-                                                automaticCheck && !checkStarted -> {
+                                                (automaticCheck || automaticImport) && !checkStarted -> {
                                                     selectedSemester = catalog.latestSemester()
                                                     if (selectedSemester == null) onCheckFailed("未找到最新学期的课表入口")
                                                     else { checkStarted = true; startImport() }
                                                 }
-                                                automaticCheck -> Unit
+                                                automaticCheck || automaticImport -> Unit
                                                 requested != null && requested.sameSchoolIds(pageSemester) -> {
                                                     pendingSemester = null
                                                     selectedSemester = requested
@@ -822,7 +843,8 @@ fun QnuImportScreen(
                                 if (automaticCheck) onCheckFailed(status)
                             }
                         }
-                        view.loadUrl(QnuEndpointPolicy.INITIAL_WEBVIEW_URL)
+                        if (automaticCheck || automaticImport) view.loadUrl(QnuEndpointPolicy.INITIAL_WEBVIEW_URL)
+                        else openQnuLogin(view)
                     }
                 },
                 update = { view ->
@@ -830,7 +852,7 @@ fun QnuImportScreen(
                     if (currentUrl.isBlank()) view.loadUrl(QnuEndpointPolicy.INITIAL_WEBVIEW_URL)
                 },
             )
-            if (!automaticCheck && (pageLoading || importStarted || capturing)) {
+            if (!backgroundCheck && (pageLoading || importStarted || capturing)) {
                 Box(
                     Modifier.fillMaxSize().background(colors.solid2.copy(alpha = if (pageLoading) 0.88f else 0.32f)),
                     contentAlignment = Alignment.Center,
@@ -875,6 +897,20 @@ fun QnuImportScreen(
             onDismiss = { showSemesterPicker = false },
         )
     }
+}
+
+/** Clear only live cookies of the two school hosts; encrypted saved credentials stay available. */
+private fun openQnuLogin(view: WebView) {
+    val cookies = CookieManager.getInstance()
+    listOf("https://jw.qztc.edu.cn/academic/index_frame.jsp", "https://id.qztc.edu.cn/portal/login.html", "https://id.qztc.edu.cn/authserver/login").forEach { url ->
+        cookies.getCookie(url).orEmpty().split(';').map { it.substringBefore('=').trim() }.filter { it.isNotBlank() }.forEach { name ->
+            listOf("/", "/academic", "/academic/", "/portal", "/portal/", "/authserver", "/authserver/").forEach { path ->
+                cookies.setCookie(url, "$name=; Path=$path; Max-Age=0; Secure")
+            }
+        }
+    }
+    cookies.flush()
+    view.loadUrl(QnuEndpointPolicy.INITIAL_WEBVIEW_URL)
 }
 
 private enum class IntranetGate { Checking, NeedVpn, Ready }
@@ -1192,7 +1228,7 @@ internal fun autofillCredentials(view: WebView, credentials: QnuSavedCredentials
 }
 
 /** The school portal opens a blank popup and posts its SSO form into it; keep that POST in this WebView. */
-private fun installPortalSsoBridge(view: WebView) {
+internal fun installPortalSsoBridge(view: WebView) {
     view.evaluateJavascript(
         """
         (() => {
@@ -1591,3 +1627,18 @@ private const val READ_TIMETABLE_HTML_SCRIPT = """
 })();
 """
 
+private const val READ_CHANGE_NOTICES_SCRIPT = """
+(() => {
+  const docs=[];
+  function visit(d){if(!d||docs.includes(d)||docs.length>=32)return;docs.push(d);for(const f of d.querySelectorAll('iframe,frame'))try{visit(f.contentDocument);}catch(_){}}
+  visit(document);
+  const gridOf=d=>d.querySelector('table#timetable')||[...d.querySelectorAll('table')].find(t=>t.querySelector('td[id="1-1"],td[id="1_1"]')||(/星期一/.test(t.textContent)&&/星期日|星期天/.test(t.textContent)));
+  const d=docs.find(d=>gridOf(d));
+  if(!d)return '';
+  const grid=gridOf(d);
+  const tables=[...d.querySelectorAll('table')].filter(t=>t!==grid&&!t.contains(grid)&&!grid.contains(t)&&(grid.compareDocumentPosition(t)&4)&&/停课|调课|补课|代课/.test(t.textContent)&&[...t.rows].some(r=>r.cells.length>=10));
+  const title=[...d.querySelectorAll('#title,h1,h2,td')].find(e=>/20\d{2}.*[春夏秋].*课表|20\d{2}.*学期.*课表/.test(e.textContent)&&!e.querySelector('table'))?.textContent||d.title;
+  const heading=d.createElement('div');heading.id='title';heading.textContent=title;
+  return heading.outerHTML+'<table id="timetable"></table>'+tables.map(t=>t.outerHTML).join('');
+})();
+"""

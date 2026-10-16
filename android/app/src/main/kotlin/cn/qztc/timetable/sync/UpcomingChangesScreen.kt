@@ -29,6 +29,9 @@ fun UpcomingChangesScreen(
     semester: Semester, repository: TimetableRepository,
     onBack: () -> Unit, onLogin: () -> Unit, onApplied: suspend () -> Unit,
     savedCredentials: QnuSavedCredentials? = null,
+    checkOnOpen: Boolean = true,
+    onResultReady: (String?) -> Unit = {},
+    initialMessage: String? = null,
 ) {
     val context = LocalContext.current
     val colors = LocalQztcColors.current
@@ -36,29 +39,42 @@ fun UpcomingChangesScreen(
     val inbox = remember(semester.id) { ScheduleChangeInbox(context, semester.id) }
     var current by remember(semester.id) { mutableStateOf(TimetableState()) }
     var entries by remember(semester.id) { mutableStateOf(emptyList<ScheduleException>()) }
+    var expiredEntries by remember(semester.id) { mutableStateOf(emptyList<ScheduleException>()) }
     var periods by remember(semester.id) { mutableStateOf(emptyList<Period>()) }
     var busy by remember { mutableStateOf(true) }
     var checking by remember { mutableStateOf(false) }
     var checkRevision by remember { mutableIntStateOf(0) }
-    var message by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf(initialMessage) }
     var loginNeeded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ScheduleException?>(null) }
+    var past by remember { mutableStateOf(false) }
     suspend fun reload() {
         current = repository.state(semester.id)
         periods = repository.periodScheme(semester.id)?.periods.orEmpty()
         // Preserve earlier pending results when moving from the former sync UI.
-        val legacy = repository.pendingChangeSets(semester.id).firstOrNull()?.diff?.addedExceptions.orEmpty()
+        val legacyDiff = repository.pendingChangeSets(semester.id).firstOrNull()?.diff
+        val legacyCourses = legacyDiff?.let { it.addedCourses + it.removedCourses + it.changedCourses.flatMap { change -> listOf(change.old, change.new) } }.orEmpty()
+        val legacy = legacyDiff?.addedExceptions.orEmpty().map { entry -> entry.copy(
+            courseName = ScheduleCourseNames.fullest(entry.courseName, ScheduleCourseNames.findCourse(entry.courseId, legacyCourses)?.name)) }
         inbox.receive(legacy)
-        entries = inbox.read().distinctBy { it.id }
-            .filter { UpcomingScheduleChanges.isUpcoming(semester, it, periods, LocalDateTime.now()) }
-            .filterNot { it in current.exceptions }
-            .sortedWith(compareBy({ (it.original ?: it.replacement)?.week }, { (it.original ?: it.replacement)?.weekday }, { (it.original ?: it.replacement)?.periodStart }))
+        val available = inbox.read().map { entry ->
+            // Earlier checks used a temporary semester prefix in course IDs.
+            // Resolve their stable school code/sequence against the imported term.
+            val course = ScheduleCourseNames.findCourse(entry.courseId, current.courses)
+            if (course == null) entry else entry.copy(courseId = course.id,
+                courseName = ScheduleCourseNames.fullest(entry.courseName, course.name))
+        }.distinctBy { it.id }
+        val sort = compareBy<ScheduleException>({ (it.original ?: it.replacement)?.week }, { (it.original ?: it.replacement)?.weekday }, { (it.original ?: it.replacement)?.periodStart })
+        entries = available.filter { UpcomingScheduleChanges.isUpcoming(semester, it, periods, LocalDateTime.now()) }.sortedWith(sort)
+        expiredEntries = available.filterNot { UpcomingScheduleChanges.isUpcoming(semester, it, periods, LocalDateTime.now()) }.sortedWith(sort)
     }
     fun check() {
-        busy = true; message = null; loginNeeded = false; entries = emptyList()
+        busy = true; message = null; loginNeeded = false; entries = emptyList(); expiredEntries = emptyList()
         checkRevision++; checking = true
     }
-    LaunchedEffect(semester.id) { check() }
+    LaunchedEffect(semester.id) {
+        if (checkOnOpen) check() else { reload(); busy = false }
+    }
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("停课与调课", style = QztcTypography.section, color = colors.ink)
@@ -75,17 +91,17 @@ fun UpcomingChangesScreen(
                     scope.launch {
                         try {
                             val hint = candidate.semesterHint
-                            if (candidate.hasErrors) message = "停调课记录读取不完整，请重试"
+                            if (candidate.hasErrors) message = "通知读取失败，请重试"
                             else if (hint?.year != semester.schoolYear || hint.term != semester.term) {
-                                message = "最新学期尚未导入本地，请先导入该学期的课表"
+                                message = "请先导入最新学期"
                             } else {
                                 reload()
-                                val merged = UpcomingScheduleChanges.merge(semester, current, candidate.state, periods, LocalDateTime.now())
+                                val merged = UpcomingScheduleChanges.merge(semester, current, candidate.state, periods, LocalDateTime.now(), includeExpired = true)
                                 inbox.receive(merged.exceptions)
                                 reload()
                             }
                         } catch (_: Exception) { message = "读取失败，原课表已保留" }
-                        finally { busy = false }
+                        finally { busy = false; onResultReady(message) }
                     }
                 },
             )
@@ -93,22 +109,34 @@ fun UpcomingChangesScreen(
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).testTag("upcoming-changes-list"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (busy) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("正在检查最新学期…", color = colors.mut)
+                Text("正在检查…", color = colors.mut)
             } else if (message != null) {
                 Text(message!!, color = colors.mut)
-            } else if (entries.isEmpty()) {
-                Text("没有待加入课表的停课与调课", color = colors.mut)
+            } else if (entries.isEmpty() && expiredEntries.isEmpty()) {
+                Text("暂无新的停调课", color = colors.mut)
             }
-            if (!busy && message == null) entries.forEach { entry ->
-                key(entry.id) {
-                    ChangeEntry(entry, current, semester, onEdit = { editing = entry }, onApply = {
-                        scope.launch {
-                            busy = true
-                            try { repository.applyScheduleException(semester.id, entry); onApplied(); reload() }
-                            catch (_: Exception) { message = "更新失败，原课表已保留" }
-                            finally { busy = false }
+            if (!busy && message == null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(!past, { past = false }, label = { Text("进行时 (${entries.size})") })
+                    FilterChip(past, { past = true }, label = { Text("过去时 (${expiredEntries.size})") })
+                }
+                val displayed = if (past) expiredEntries else entries
+                listOf(ExceptionType.CANCEL to "停课", ExceptionType.MOVE to "调课").forEach { (type, title) ->
+                    Text(title, style = QztcTypography.section, color = colors.ink)
+                    val group = displayed.filter { it.type == type }
+                    if (group.isEmpty()) Text("暂无${title}安排", color = colors.mut)
+                    group.forEach { entry ->
+                        key(entry.id) {
+                            ChangeEntry(entry, current, semester, expired = past, onEdit = { editing = entry }, onApply = {
+                                scope.launch {
+                                    busy = true
+                                    try { repository.applyScheduleException(semester.id, entry); onApplied(); reload() }
+                                    catch (_: Exception) { message = "更新失败，原课表已保留" }
+                                    finally { busy = false }
+                                }
+                            })
                         }
-                    })
+                    }
                 }
             }
         }
@@ -126,27 +154,35 @@ fun UpcomingChangesScreen(
 }
 
 @Composable
-private fun ChangeEntry(entry: ScheduleException, current: TimetableState, semester: Semester, onEdit: () -> Unit, onApply: () -> Unit) {
+private fun ChangeEntry(entry: ScheduleException, current: TimetableState, semester: Semester, expired: Boolean, onEdit: () -> Unit, onApply: () -> Unit) {
     val colors = LocalQztcColors.current
     val existing = current.exceptions.any { it.id == entry.id }
-    Surface(Modifier.fillMaxWidth().clickable(onClick = onEdit), color = colors.solid, shape = MaterialTheme.shapes.medium) {
+    val applied = current.exceptions.any { it.copy(courseName = null) == entry.copy(courseName = null) }
+    val schoolKey = entry.courseId.removePrefix("qnu:").substringAfterLast(':')
+    val course = ScheduleCourseNames.findCourse(entry.courseId, current.courses)
+    val legacyName = schoolKey.substringBeforeLast('#').takeIf { it.any { c -> c in '\u4e00'..'\u9fff' } }
+    Surface(Modifier.fillMaxWidth().then(if (expired) Modifier else Modifier.clickable(onClick = onEdit)), color = colors.solid, shape = MaterialTheme.shapes.medium) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(current.courses.firstOrNull { it.id == entry.courseId }?.name ?: "课程", style = QztcTypography.courseTitle, color = colors.ink)
-            Text(if (entry.type == ExceptionType.CANCEL) "停课" else "调课", color = colors.accentDeep)
-            Text(slotLabel(semester, entry.original), color = colors.ink)
-            if (entry.type == ExceptionType.MOVE) Text("调到 ${slotLabel(semester, entry.replacement)}", color = colors.ink)
+            Text(ScheduleCourseNames.fullest(entry.courseName, course?.name, legacyName) ?: "课程名称待更新，请重新检查",
+                modifier = Modifier.fillMaxWidth(), style = QztcTypography.courseTitle, color = colors.ink,
+                softWrap = true, maxLines = Int.MAX_VALUE)
+            Text(if (entry.type == ExceptionType.MOVE) "从 ${slotLabel(semester, entry.original)}\n→ ${slotLabel(semester, entry.replacement)}"
+                else slotLabel(semester, entry.original), color = colors.ink)
             entry.note?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.mut) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (existing) "与课表不同" else "未加入课表", color = colors.warn)
-                TextButton(onClick = onEdit) { Text("编辑") }
+            if (!expired) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (applied) "已加入课表" else if (existing) "与课表不同" else "未加入课表", color = if (applied) colors.mut else colors.warn)
+                    TextButton(onClick = onEdit) { Text("编辑") }
+                }
+                if (!applied) Button(onClick = onApply) { Text(if (existing) "更新到课表" else "加入课表") }
             }
-            Button(onClick = onApply) { Text(if (existing) "更新到课表" else "加入课表") }
         }
     }
 }
 
 /** Modal entry point used by Course Arrangement. It keeps the check local to
  * the settings screen instead of navigating to another page. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpcomingChangesDialog(
     semester: Semester,
@@ -155,12 +191,26 @@ fun UpcomingChangesDialog(
     onLogin: () -> Unit,
     onApplied: suspend () -> Unit,
     savedCredentials: QnuSavedCredentials?,
+    checkOnOpen: Boolean = true,
 ) {
+    val colors = LocalQztcColors.current
     var latestSemester by remember { mutableStateOf<Semester?>(null) }
+    var resultReady by remember { mutableStateOf(!checkOnOpen) }
+    var resultMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        latestSemester = repository.semesters().maxWithOrNull(compareBy({ it.schoolYear }, { it.term.ordinal })) ?: semester
+        latestSemester = repository.semesters().filter { repository.state(it.id).courses.isNotEmpty() }
+            .maxWithOrNull(compareBy({ it.schoolYear }, { it.term.ordinal })) ?: semester
     }
-    Dialog(
+    val content: @Composable () -> Unit = {
+        latestSemester?.let { latest -> UpcomingChangesScreen(
+            semester = latest, repository = repository, onBack = onDismiss, onLogin = onLogin,
+            onApplied = onApplied, savedCredentials = savedCredentials, checkOnOpen = checkOnOpen && !resultReady,
+            onResultReady = { resultMessage = it; resultReady = true }, initialMessage = resultMessage,
+        ) } ?: Text("正在检查…", Modifier.padding(24.dp))
+    }
+    if (resultReady) ModalBottomSheet(onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = colors.solid) { content() }
+    else Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
@@ -168,16 +218,10 @@ fun UpcomingChangesDialog(
             modifier = Modifier
                 .fillMaxWidth(.92f),
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
+            color = colors.solid,
+            contentColor = colors.ink,
         ) {
-            latestSemester?.let { latest -> UpcomingChangesScreen(
-                semester = latest,
-                repository = repository,
-                onBack = onDismiss,
-                onLogin = onLogin,
-                onApplied = onApplied,
-                savedCredentials = savedCredentials,
-            ) } ?: Text("正在检查…", Modifier.padding(24.dp))
+            content()
         }
     }
 }

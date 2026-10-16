@@ -44,9 +44,11 @@ data class AppPreferences(
     val remindersEnabled: Boolean = false,
     val reminderMinutes: Int = 15,
     val reminderDisplayMode: ReminderDisplayMode = ReminderDisplayMode.SCREEN_POPUP,
+    val remindOnHolidays: Boolean = false,
     /** Per-course override in minutes; zero means this course does not notify. */
     val courseReminderOverrides: Map<String, Int> = emptyMap(),
     val courseReminderMessages: Map<String, String> = emptyMap(),
+    val dailyAgenda: cn.qztc.timetable.core.domain.model.DailyAgendaSettings = cn.qztc.timetable.core.domain.model.DailyAgendaSettings(),
     val backgroundSource: BackgroundSource = BackgroundSource.SCENE,
     val backgroundMotion: BackgroundMotion = BackgroundMotion.DYNAMIC,
     val backgroundImagePath: String? = null,
@@ -62,7 +64,7 @@ data class AppPreferences(
     val widgetBackgroundAlpha: Float = .96f,
     val glassWidgetBackgroundAlpha: Float = .85f,
     val weekendDisplayMode: WeekendDisplayMode = WeekendDisplayMode.HIDE_EMPTY,
-    /** Built-in palette indexes (0..7) or custom opaque ARGB colors. */
+    /** Built-in palette indexes (0..8) or custom opaque ARGB colors. */
     val coursePresetColors: List<Int> = CoursePalette.indices.toList(),
     val textPrimaryColor: Int? = null,
     val textSecondaryColor: Int? = null,
@@ -73,8 +75,10 @@ data class AppPreferences(
     fun startDestination(): TopDestination = when (homePreference) {
         HomePreference.TODAY -> TopDestination.Today
         HomePreference.WEEK -> TopDestination.Week
+        HomePreference.CALENDAR -> TopDestination.Calendar
         HomePreference.LAST -> when (lastDestination) {
             HomeView.WEEK -> TopDestination.Week
+            HomeView.CALENDAR -> TopDestination.Calendar
             else -> TopDestination.Today
         }
     }
@@ -91,6 +95,7 @@ data class AppPreferences(
 }
 
 class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
+    private val agendaJson = Json { ignoreUnknownKeys = true }
     private object Keys {
         val homePreference = stringPreferencesKey("home_preference")
         val lastDestination = stringPreferencesKey("last_destination")
@@ -101,8 +106,10 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
         val remindersEnabled = booleanPreferencesKey("reminders_enabled")
         val reminderMinutes = intPreferencesKey("reminder_minutes")
         val reminderDisplayMode = stringPreferencesKey("reminder_display_mode")
+        val remindOnHolidays = booleanPreferencesKey("remind_on_holidays")
         val courseReminderOverrides = stringPreferencesKey("course_reminder_overrides")
         val courseReminderMessages = stringPreferencesKey("course_reminder_messages")
+        val dailyAgenda = stringPreferencesKey("daily_agenda_settings")
         val backgroundSource = stringPreferencesKey("background_source")
         val backgroundMotion = stringPreferencesKey("background_motion")
         val backgroundImagePath = stringPreferencesKey("background_image_path")
@@ -141,8 +148,12 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
                 remindersEnabled = values[Keys.remindersEnabled] ?: false,
                 reminderMinutes = (values[Keys.reminderMinutes] ?: 15).coerceIn(0, 60),
                 reminderDisplayMode = values[Keys.reminderDisplayMode].toReminderDisplayMode(),
+                remindOnHolidays = values[Keys.remindOnHolidays] ?: false,
                 courseReminderOverrides = values[Keys.courseReminderOverrides].toCourseReminderOverrides(),
                 courseReminderMessages = values[Keys.courseReminderMessages].toCourseReminderMessages(),
+                dailyAgenda = runCatching {
+                    agendaJson.decodeFromString<cn.qztc.timetable.core.domain.model.DailyAgendaSettings>(values[Keys.dailyAgenda] ?: "{}").normalized()
+                }.getOrDefault(cn.qztc.timetable.core.domain.model.DailyAgendaSettings()),
                 backgroundSource = values[Keys.backgroundSource].toBackgroundSource(),
                 backgroundMotion = values[Keys.backgroundMotion].toBackgroundMotion(),
                 backgroundImagePath = values[Keys.backgroundImagePath],
@@ -196,6 +207,10 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[Keys.remindersEnabled] = value }
     }
 
+    suspend fun setDailyAgenda(value: cn.qztc.timetable.core.domain.model.DailyAgendaSettings) {
+        dataStore.edit { it[Keys.dailyAgenda] = Json.encodeToString(value.normalized()) }
+    }
+
     suspend fun setReminderMinutes(value: Int) {
         dataStore.edit { it[Keys.reminderMinutes] = value.coerceIn(0, 60) }
     }
@@ -206,6 +221,10 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setReminderDisplayMode(value: ReminderDisplayMode) {
         dataStore.edit { it[Keys.reminderDisplayMode] = value.name.lowercase() }
+    }
+
+    suspend fun setRemindOnHolidays(value: Boolean) {
+        dataStore.edit { it[Keys.remindOnHolidays] = value }
     }
 
     suspend fun setCourseReminderOverride(courseId: String, minutes: Int?) {
@@ -346,12 +365,14 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
 }
 
 private fun String?.toHomePreference(): HomePreference = when (this) {
+    "calendar" -> HomePreference.CALENDAR
     "week" -> HomePreference.WEEK
     "last" -> HomePreference.LAST
     else -> HomePreference.TODAY
 }
 
 private fun String?.toHomeView(): HomeView = when (this ?: DEFAULT_LAST_DESTINATION) {
+    "calendar" -> HomeView.CALENDAR
     "week" -> HomeView.WEEK
     else -> HomeView.TODAY
 }
@@ -398,7 +419,9 @@ private fun String?.toCoursePresetColors(): List<Int> =
     } else if (this.isBlank()) {
         emptyList()
     } else {
-        this.split(',').mapNotNull { it.trim().toIntOrNull() }.distinct()
+        this.split(',').mapNotNull { it.trim().toIntOrNull() }.distinct().let { values ->
+            if(values==(0..7).toList())CoursePalette.indices.toList() else values
+        }
     }
 
 private fun String?.toCourseReminderOverrides(): Map<String, Int> =

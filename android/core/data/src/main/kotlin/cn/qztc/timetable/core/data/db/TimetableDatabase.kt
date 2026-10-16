@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ActivitySuppressionEntity::class,
         SchedulePlaceBindingEntity::class,
     ],
-    version = 9,
+    version = 11,
     exportSchema = true,
 )
 abstract class TimetableDatabase : RoomDatabase() {
@@ -33,6 +33,11 @@ abstract class TimetableDatabase : RoomDatabase() {
 
     companion object {
         const val DEFAULT_NAME = "timetable.db"
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `activities` ADD COLUMN `memoTimeJson` TEXT")
+            }
+        }
 
         fun build(
             context: Context,
@@ -44,7 +49,7 @@ abstract class TimetableDatabase : RoomDatabase() {
                 TimetableDatabase::class.java,
                 name,
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             if (allowMainThreadQueries) builder.allowMainThreadQueries()
             return builder.build()
         }
@@ -156,6 +161,12 @@ abstract class TimetableDatabase : RoomDatabase() {
         val MIGRATION_8_9: Migration = object : Migration(8, 9) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE `activity_suppressions` ADD COLUMN `coverageVersion` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `activities` ADD COLUMN `calendarTimetable` INTEGER NOT NULL DEFAULT 1")
             }
         }
     }

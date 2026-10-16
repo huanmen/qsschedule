@@ -15,7 +15,8 @@ class ScheduleChangeInbox(context: Context, private val semesterId: String) {
     }.getOrDefault(emptyList())
     fun receive(values: List<ScheduleException>) {
         val old = read().associateBy { it.id }.toMutableMap()
-        values.forEach { value -> if (!prefs.getBoolean("edited:$semesterId:${value.id}", false)) old[value.id] = value }
+        values.forEach { value -> if (!prefs.getBoolean("edited:$semesterId:${value.id}", false)) old[value.id] = value.copy(
+            courseName = cn.qztc.timetable.core.domain.schedule.ScheduleCourseNames.fullest(value.courseName, old[value.id]?.courseName)) }
         prefs.edit().putString(semesterId, json.encodeToString(serializer, old.values.toList())).apply()
     }
     fun edit(value: ScheduleException) {

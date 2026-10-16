@@ -85,12 +85,19 @@ class TimetableRepository(private val db: TimetableDatabase) {
 
     /** 学期全部课表数据（所有来源）。 */
     suspend fun state(semesterId: String): TimetableState = db.withTransaction {
-        val records = timetableDao.suppressions(semesterId)
+        val records = timetableDao.suppressions(semesterId).filter { record ->
+            record.activityId == null || record.activityId.startsWith("course-coverage:") ||
+                cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay.isSchoolImport(record.activityId)
+        }
         val state = repairLegacyQnuDetailPeriods(TimetableState(
             courses = timetableDao.courses(semesterId).map(EntityMappers::toDomain),
             meetings = timetableDao.meetings(semesterId).map(EntityMappers::toDomain),
             exceptions = timetableDao.exceptions(semesterId).map(EntityMappers::toDomain),
             suppressedOccurrences = records.map { it.occurrenceKey }.distinct(),
+            activitySuppressedOccurrences = records.filter { it.activityId != null && !it.activityId.startsWith("course-coverage:") }
+                .map { it.occurrenceKey }.distinct().filter { key ->
+                    records.none { it.occurrenceKey == key && (it.activityId == null || it.activityId.startsWith("course-coverage:")) }
+                },
         ))
         repairLegacyCourseCoverage(semesterId, state, records)
     }
@@ -125,7 +132,8 @@ class TimetableRepository(private val db: TimetableDatabase) {
                 }
             }
         timetableDao.upsertSuppressions(legacy.map { it.copy(coverageVersion = 1) } + missing)
-        return state.copy(suppressedOccurrences = (state.suppressedOccurrences + missing.map { it.occurrenceKey }).distinct())
+        return state.copy(suppressedOccurrences = (state.suppressedOccurrences + missing.map { it.occurrenceKey }).distinct(),
+            activitySuppressedOccurrences = state.activitySuppressedOccurrences.filterNot { key -> missing.any { it.occurrenceKey == key } })
     }
 
     /**
@@ -344,13 +352,19 @@ class TimetableRepository(private val db: TimetableDatabase) {
         }
     }
 
-    suspend fun activities(semesterId: String): List<ScheduleActivity> =
-        timetableDao.activities(semesterId).map(EntityMappers::toDomain)
+    suspend fun activities(semesterId: String, includeHidden: Boolean = false): List<ScheduleActivity> =
+        (if (includeHidden) timetableDao.allActivities(semesterId) else timetableDao.activities(semesterId))
+            .map(EntityMappers::toDomain)
 
     suspend fun upsertActivity(activity: ScheduleActivity) =
         timetableDao.upsertActivity(EntityMappers.toEntity(activity))
 
     suspend fun saveActivityWithCoverage(activity: ScheduleActivity, replaceMeetingIds: List<String>) = db.withTransaction {
+        if (!cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay.inTimetable(activity)) {
+            upsertActivity(activity)
+            timetableDao.clearActivitySuppressions(activity.id)
+            return@withTransaction
+        }
         val semester = requireNotNull(semester(activity.semesterId))
         val periods = (periodScheme(semester.id) ?: PeriodSchemeFactory.forSemester(semester.id)).periods
         val unhidden = state(semester.id).copy(suppressedOccurrences = emptyList())

@@ -15,7 +15,10 @@ data class TimetableState(
     val meetings: List<CourseMeeting> = emptyList(),
     val exceptions: List<ScheduleException> = emptyList(),
     val suppressedOccurrences: List<String> = emptyList(),
+    /** Activity-owned covers are visible only in the activity view. */
+    val activitySuppressedOccurrences: List<String> = emptyList(),
 ) {
+    fun courseView() = copy(suppressedOccurrences = suppressedOccurrences.filterNot { it in activitySuppressedOccurrences })
     val isEmpty: Boolean
         get() = courses.isEmpty() && meetings.isEmpty() && exceptions.isEmpty()
 

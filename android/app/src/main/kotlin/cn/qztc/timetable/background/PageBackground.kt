@@ -1,12 +1,6 @@
 package cn.qztc.timetable.background
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -25,6 +19,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.layout.ContentScale
 import cn.qztc.timetable.AppPreferences
 import cn.qztc.timetable.core.ui.background.BackgroundMotion
@@ -44,18 +40,23 @@ fun PageBackground(
     carouselEnabled: Boolean = true,
     carouselIntervalSeconds: Int = 8,
     modifier: Modifier = Modifier,
+    onBackdropColor: (Color) -> Unit = {},
+    preparedImage: android.graphics.Bitmap? = null,
 ) {
     val colors = LocalQztcColors.current
     // Preferences arrive asynchronously; never render the default scene before
     // knowing whether the user selected an image.
     if (preferences == null || preferences.backgroundMotion == BackgroundMotion.OFF) {
+        LaunchedEffect(colors.appBg) { onBackdropColor(colors.appBg) }
         Canvas(modifier.fillMaxSize()) { drawRect(colors.appBg) }
         return
     }
     when {
-        preferences.backgroundSource == BackgroundSource.IMAGE && preferences.backgroundImagePath != null -> {
+        preferences.backgroundSource == BackgroundSource.IMAGE && preferences.backgroundImagePath != null &&
+            preparedImage != null -> {
             ImageBackground(
                 path = preferences.backgroundImagePath,
+                preparedImage = preparedImage,
                 importedPaths = importedImagePaths,
                 rotate = preferences.backgroundMotion == BackgroundMotion.DYNAMIC &&
                     preferences.backgroundCarouselEnabled && carouselEnabled && !reduceMotion,
@@ -64,6 +65,7 @@ fun PageBackground(
                 positionY = preferences.backgroundPositionY,
                 darkTheme = darkTheme,
                 modifier = modifier,
+                onBackdropColor = onBackdropColor,
             )
         }
 
@@ -72,39 +74,38 @@ fun PageBackground(
             palette = preferences.palette,
             animated = preferences.backgroundMotion == BackgroundMotion.DYNAMIC && !reduceMotion,
             modifier = modifier,
+            onBackdropColor = onBackdropColor,
         )
     }
 }
 
 @Composable
-private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: QztcPalette, modifier: Modifier = Modifier) {
-    val sky = when (palette) {
+private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: QztcPalette, modifier: Modifier = Modifier, onBackdropColor: (Color) -> Unit = {}) {
+    val sky = remember(palette, darkTheme) { when (palette) {
         QztcPalette.ORIGINAL -> if (darkTheme) listOf(0xFF060D1D, 0xFF0C1830, 0xFF1A2A4A, 0xFF2C3A58)
             else listOf(0xFF7FC4E4, 0xFFA9D9E9, 0xFFEFE0CB, 0xFFF6CFA2)
         QztcPalette.SODA -> if (darkTheme) listOf(0xFF0C1D2C, 0xFF142D3F, 0xFF20414C, 0xFF284D54)
             else listOf(0xFFB8DCE9, 0xFFD8EDF2, 0xFFEAF5F5, 0xFFBBDDD9)
         QztcPalette.CITRUS -> if (darkTheme) listOf(0xFF121C21, 0xFF202E26, 0xFF2E3D2B, 0xFF3D4B30)
             else listOf(0xFFD8E9EC, 0xFFEEF3DF, 0xFFF3F3D5, 0xFFD6E3B8)
-    }.map { Color(it) }
-    val hills = when (palette) {
+    }.map { Color(it) } }
+    LaunchedEffect(sky) { onBackdropColor(sky.first()) }
+    val hills = remember(palette, darkTheme) { when (palette) {
         QztcPalette.ORIGINAL -> if (darkTheme) listOf(0xFF152840, 0xFF20354B) else listOf(0xFFA6C8B4, 0xFF6D9C88)
         QztcPalette.SODA -> if (darkTheme) listOf(0xFF1C3543, 0xFF244953) else listOf(0xFFA5CDD2, 0xFF79ABB5)
         QztcPalette.CITRUS -> if (darkTheme) listOf(0xFF293928, 0xFF354A2E) else listOf(0xFFBDCF99, 0xFF97B274)
-    }.map { Color(it) }
-    val cloudOffset = if (animated) {
-        val transition = rememberInfiniteTransition(label = "scene-clouds")
-        val offset by transition.animateFloat(
-            initialValue = -.08f,
-            targetValue = .12f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(120_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "cloud-offset",
-        )
-        offset
-    } else {
-        0f
+    }.map { Color(it) } }
+    val cloudOffset = remember { mutableStateOf(0f) }
+    LaunchedEffect(animated) {
+        if (!animated) return@LaunchedEffect
+        val startedAt = android.os.SystemClock.uptimeMillis()
+        // Clouds move only a fraction of a pixel per frame; avoid a full-screen
+        // backdrop capture at the display's 120 Hz while the page is idle.
+        while (true) {
+            val phase = ((android.os.SystemClock.uptimeMillis() - startedAt) % 240_000L) / 120_000f
+            cloudOffset.value = -.08f + .2f * if (phase <= 1f) phase else 2f - phase
+            delay(100)
+        }
     }
 
     Canvas(modifier.fillMaxSize()) {
@@ -130,7 +131,8 @@ private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: Qztc
             if (palette != QztcPalette.CITRUS) {
                 drawSun(Offset(size.width * .82f, size.height * .13f), size.minDimension * .065f, Color(0xFFF9DEA0))
             }
-            val shift = size.width * cloudOffset
+            // Read animation state in drawing so each frame does not recompose the scene.
+            val shift = size.width * cloudOffset.value
             drawCloud(Offset(size.width * .12f + shift, size.height * .22f), size.width * .15f, .28f)
             drawCloud(Offset(size.width * .60f - shift * .55f, size.height * .31f), size.width * .19f, .22f)
             drawCloud(Offset(size.width * .28f + shift * .35f, size.height * .48f), size.width * .12f, .16f)
@@ -179,6 +181,7 @@ private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: Qztc
 @Composable
 private fun ImageBackground(
     path: String,
+    preparedImage: android.graphics.Bitmap,
     importedPaths: List<String>,
     rotate: Boolean,
     intervalSeconds: Int,
@@ -186,28 +189,30 @@ private fun ImageBackground(
     positionY: Float,
     darkTheme: Boolean,
     modifier: Modifier = Modifier,
+    onBackdropColor: (Color) -> Unit = {},
 ) {
     val paths = remember(path, importedPaths) { (listOf(path) + importedPaths).distinct() }
     var displayedPath by remember(path, paths) { mutableStateOf(path) }
     LaunchedEffect(paths, rotate) {
         if (!rotate || paths.size < 2) {
-            displayedPath = path
+            // Pausing the carousel must keep the currently displayed image.
         } else {
             var index = paths.indexOf(displayedPath).coerceAtLeast(0)
             while (true) {
                 delay(intervalSeconds.coerceIn(1, 86_400) * 1_000L)
                 index = (index + 1) % paths.size
-                displayedPath = paths[index]
+                // Decode before swapping carousel layers so the incoming frame is never empty.
+                if (BackgroundBitmapCache.load(paths[index]) != null) displayedPath = paths[index]
             }
         }
     }
     Box(modifier.fillMaxSize()) {
-        if (rotate && paths.size > 1) {
+        if (paths.size > 1) {
             Crossfade(targetState = displayedPath, label = "background-image-carousel") { target ->
-                BackgroundImageFrame(target, positionX, positionY)
+                BackgroundImageFrame(target, positionX, positionY, darkTheme, preparedImage.takeIf { target == path }) { sample -> onBackdropColor((if(darkTheme) Color(0xFF060C12).copy(alpha=.52f) else Color.White.copy(alpha=.28f)).compositeOver(sample)) }
             }
         } else {
-            BackgroundImageFrame(path, positionX, positionY)
+            BackgroundImageFrame(path, positionX, positionY, darkTheme, preparedImage) { sample -> onBackdropColor((if(darkTheme) Color(0xFF060C12).copy(alpha=.52f) else Color.White.copy(alpha=.28f)).compositeOver(sample)) }
         }
         Canvas(Modifier.fillMaxSize()) {
             drawRect(
@@ -222,10 +227,29 @@ private fun ImageBackground(
 }
 
 @Composable
-private fun BackgroundImageFrame(path: String, positionX: Float, positionY: Float) {
-    var bitmap by remember(path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+private fun BackgroundImageFrame(path: String, positionX: Float, positionY: Float, darkTheme: Boolean, preparedImage: android.graphics.Bitmap?, onBackdropColor: (Color) -> Unit) {
+    var bitmap by remember(path) { mutableStateOf(preparedImage ?: BackgroundBitmapCache.peek(path)) }
     LaunchedEffect(path) {
-        bitmap = withContext(Dispatchers.IO) { decodeBackgroundBitmap(path) }
+        if (bitmap == null) bitmap = BackgroundBitmapCache.load(path)
+    }
+    val configuration = LocalConfiguration.current
+    LaunchedEffect(bitmap, positionX, positionY, darkTheme, configuration.screenWidthDp, configuration.screenHeightDp) {
+        val image = bitmap ?: return@LaunchedEffect
+        val sample = withContext(Dispatchers.Default) {
+            val ratio = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.coerceAtLeast(1)
+            val visibleHeight = minOf(image.height.toFloat(), image.width / ratio)
+            val visibleWidth = minOf(image.width.toFloat(), image.height * ratio)
+            val left = (image.width-visibleWidth)*positionX.coerceIn(0f,1f)
+            val top = (image.height-visibleHeight)*positionY.coerceIn(0f,1f)
+            var red=0f;var green=0f;var blue=0f
+            for(x in 0..17)for(y in 0..5) {
+                val pixel=Color(image.getPixel((left+visibleWidth*(.15f+.7f*x/17)).toInt().coerceIn(0,image.width-1),
+                    (top+visibleHeight*(.035f+.055f*y/5)).toInt().coerceIn(0,image.height-1)))
+                red+=pixel.red;green+=pixel.green;blue+=pixel.blue
+            }
+            Color(red/108,green/108,blue/108)
+        }
+        onBackdropColor(sample)
     }
     bitmap?.let {
         Image(

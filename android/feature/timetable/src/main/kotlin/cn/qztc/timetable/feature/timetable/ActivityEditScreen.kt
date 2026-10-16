@@ -75,6 +75,7 @@ fun ScheduleActivity.toEditDraft(
     endDate = endDate ?: startDate ?: fallbackDate,
     color = color ?: 0,
     sessions = if (id.isBlank()) emptyList() else effectiveSessions(),
+    memoTime = memoTime,
 )
 
 fun ActivityEditDraft.toScheduleActivity(semesterId: String): ScheduleActivity = ScheduleActivity(
@@ -86,6 +87,7 @@ fun ActivityEditDraft.toScheduleActivity(semesterId: String): ScheduleActivity =
     kind = kind,
     color = color,
     sessions = sessions,
+    memoTime = memoTime,
     weekday = weekday.takeIf { kind == ActivityKind.PERIOD },
     periodStart = periodStart.takeIf { kind == ActivityKind.PERIOD },
     periodEnd = periodEnd.takeIf { kind == ActivityKind.PERIOD },
@@ -198,10 +200,10 @@ internal fun ActivityConflictDialog(
         onDismissRequest = onDismiss,
         title = { Text("与现有课程冲突") },
         text = {
-            Text("活动时间和以下课程重叠。可以选择去掉这些课程，或保留课程并叠放显示。\n\n${names.joinToString("\n")}")
+            Text("活动时间和以下课程重叠。覆盖仅用于活动视图，课程视图仍显示原课。\n\n${names.joinToString("\n")}")
         },
         confirmButton = {
-            Button(onClick = onRemoveCourses) { Text("去掉这些课程") }
+            Button(onClick = onRemoveCourses) { Text("活动视图覆盖") }
         },
         dismissButton = {
             TextButton(onClick = onKeepCourses) { Text("保留课程") }

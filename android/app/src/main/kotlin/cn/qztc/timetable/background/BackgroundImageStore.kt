@@ -64,6 +64,7 @@ class BackgroundImageStore(private val context: Context) {
             "背景图片来源无效"
         }
         check(file.delete()) { "无法删除背景图片" }
+        BackgroundBitmapCache.remove(path)
     }
 }
 

@@ -66,6 +66,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -148,9 +149,7 @@ fun WeekScreen(
     onSaveCourseEdit: (DemoOccurrence, CourseEditDraft) -> Unit = { _, _ -> },
     onDeleteCourse: (DemoOccurrence) -> Unit = {},
     onAddCourse: (CourseEditDraft) -> Unit = {},
-    onSaveActivity: (ActivityEditDraft, removeMeetingIds: List<String>) -> Unit = { _, _ -> },
-    onDeleteActivity: (String, Boolean) -> Unit = { _, _ -> },
-    onSaveAcademicDays: (List<AcademicDay>) -> Unit = {},
+    onOpenCalendar: (java.time.LocalDate) -> Unit = {},
     resetToCurrentWeekRequest: Int = 0,
     weekendDisplayMode: WeekendDisplayMode = WeekendDisplayMode.HIDE_EMPTY,
     fontSizeMode: FontSizeMode = FontSizeMode.DEFAULT,
@@ -159,6 +158,7 @@ fun WeekScreen(
     onCoverBottomBar: (Boolean) -> Unit = {},
     initialWeek: Int? = null,
     onWeekChanged: (Int) -> Unit = {},
+    active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val currentWeek = scheduleState.currentWeek
@@ -166,15 +166,9 @@ fun WeekScreen(
     var weekSheetOpen by remember { mutableStateOf(false) }
     var previewPressed by remember { mutableStateOf(false) }
     var holidayView by rememberSaveable(scheduleState.importedSchedule?.semester?.id) { mutableStateOf(false) }
-    var horizontalDrag by remember { mutableFloatStateOf(0f) }
     var detailOccurrence by remember { mutableStateOf<DemoOccurrence?>(null) }
     var addingCourse by remember { mutableStateOf(false) }
-    var detailActivity by remember { mutableStateOf<ScheduleActivity?>(null) }
-    var editingActivity by remember { mutableStateOf<ScheduleActivity?>(null) }
-    var pendingActivitySave by remember { mutableStateOf<PendingActivitySave?>(null) }
     var pendingCourseSave by remember { mutableStateOf<PendingCourseSave?>(null) }
-    var addSheetOpen by remember { mutableStateOf(false) }
-    var editingAcademicDay by remember { mutableStateOf<AcademicDay?>(null) }
     val totalWeeks = scheduleState.importedSchedule?.semester?.totalWeeks ?: 20
     val reduceMotion = LocalGlassSettings.current.reduceMotion
 
@@ -192,23 +186,13 @@ fun WeekScreen(
     fun changeWeek(next: Int) {
         val target = next.coerceIn(1, totalWeeks.coerceAtLeast(1))
         if (target != week) {
+            onVisualTransition()
             week = target
             onWeekChanged(target)
         }
     }
 
-    fun closeActivityPages() {
-        editingActivity = null
-        detailActivity = null
-    }
-
-    fun trySaveActivity(draft: ActivityEditDraft, afterSave: () -> Unit) {
-        val hits = findActivityConflicts(draft, scheduleState)
-        onSaveActivity(draft, hits.map { it.meeting.id })
-        afterSave()
-    }
-
-    detailOccurrence?.let { occurrence ->
+    detailOccurrence?.takeIf { active }?.let { occurrence ->
         BackHandler {
             if (pendingCourseSave != null) pendingCourseSave = null else detailOccurrence = null
         }
@@ -257,7 +241,7 @@ fun WeekScreen(
         return
     }
 
-    if (addingCourse) {
+    if (addingCourse && active) {
         DisposableEffect(Unit) {
             onCoverBottomBar(true)
             onDispose { onCoverBottomBar(false) }
@@ -314,78 +298,6 @@ fun WeekScreen(
         return
     }
 
-    editingActivity?.let { activity ->
-        val isNew = activity.id.isBlank()
-        DisposableEffect(Unit) {
-            onCoverBottomBar(true)
-            onDispose { onCoverBottomBar(false) }
-        }
-        ActivityEditPage(
-            title = if (isNew) "添加活动" else "编辑活动",
-            editorKey = activity.id.ifBlank { "add-activity-$week" },
-            initial = activity.toEditDraft(
-                fallbackWeekday = if (week == currentWeek) scheduleState.todayWeekday else 1,
-                fallbackDate = scheduleState.dateFor(week, 1),
-                totalWeeks = totalWeeks,
-            ),
-            presetColors = coursePresetColors,
-            totalWeeks = totalWeeks,
-            showDelete = !isNew,
-            onBack = { editingActivity = null },
-            onSave = { draft -> trySaveActivity(draft, ::closeActivityPages) },
-            onDelete = {
-                                onDeleteActivity(activity.id, it)
-                closeActivityPages()
-            },
-        )
-        ActivitySaveConflictHost(
-            pending = pendingActivitySave,
-            onConfirm = { pending, removeCourses ->
-                onSaveActivity(
-                    pending.draft,
-                    if (removeCourses) pending.hits.map { it.meeting.id } else emptyList(),
-                )
-                pending.afterSave()
-                pendingActivitySave = null
-            },
-            onDismiss = { pendingActivitySave = null },
-        )
-        return
-    }
-
-    detailActivity?.let { activity ->
-        DisposableEffect(Unit) {
-            onCoverBottomBar(true)
-            onDispose { onCoverBottomBar(false) }
-        }
-        ActivityDetailPage(
-            activity = activity,
-            presetColors = coursePresetColors,
-            totalWeeks = totalWeeks,
-            fallbackWeekday = if (week == currentWeek) scheduleState.todayWeekday else 1,
-            fallbackDate = scheduleState.dateFor(week, 1),
-            onBack = { detailActivity = null },
-            onSave = { draft -> trySaveActivity(draft, ::closeActivityPages) },
-            onDelete = {
-                onDeleteActivity(activity.id, it)
-                closeActivityPages()
-            },
-        )
-        ActivitySaveConflictHost(
-            pending = pendingActivitySave,
-            onConfirm = { pending, removeCourses ->
-                onSaveActivity(
-                    pending.draft,
-                    if (removeCourses) pending.hits.map { it.meeting.id } else emptyList(),
-                )
-                pending.afterSave()
-                pendingActivitySave = null
-            },
-            onDismiss = { pendingActivitySave = null },
-        )
-        return
-    }
-
     val canPreview = scheduleState.pending.isNotEmpty() || scheduleState.hasScheduleChange(week)
     val previewing = canPreview && previewPressed
     val previewChanges = if (previewing) scheduleState.applied.toSet() + scheduleState.pending else scheduleState.applied.toSet()
@@ -395,10 +307,8 @@ fun WeekScreen(
     }
     val monthTitle = remember(weekDates) { weekMonthTitle(weekDates) }
     val onCourseClick = remember<(DemoOccurrence) -> Unit> { { detailOccurrence = it } }
-    val onActivityClick = remember<(ActivityWeekBlock) -> Unit> {
-        { block ->
-            detailActivity = scheduleState.activities().firstOrNull { it.id == block.activityId }
-        }
+    val onActivityClick: (ActivityWeekBlock) -> Unit = { block ->
+        onOpenCalendar(scheduleState.dateFor(week, block.startWeekday))
     }
     Column(modifier.fillMaxSize()) {
         WeekTopBar(
@@ -409,12 +319,13 @@ fun WeekScreen(
             onNext = { changeWeek(week + 1) },
             onTitleClick = { weekSheetOpen = true },
             onCurrentWeek = { changeWeek(currentWeek) },
-            onEditClick = { addSheetOpen = true },
+            onEditClick = { addingCourse = true },
         )
         Box(
             Modifier
                 .fillMaxSize()
                 .pointerInput(week) {
+                    var horizontalDrag = 0f
                     detectHorizontalDragGestures(
                         onDragStart = { horizontalDrag = 0f },
                         onHorizontalDrag = { change, amount ->
@@ -451,7 +362,7 @@ fun WeekScreen(
                 label = "week-switch",
             ) { displayedWeek ->
                 val weekActivities = remember(displayedWeek, scheduleState.importedSchedule) {
-                    scheduleState.activities()
+                    scheduleState.timetableActivities()
                 }
                 val holidayAvailable = remember(displayedWeek, scheduleState.importedSchedule) {
                     hasWeekActivityView(scheduleState.importedSchedule, displayedWeek)
@@ -483,7 +394,7 @@ fun WeekScreen(
                             activity.appliesOn(displayedWeek, day, scheduleState.dateFor(displayedWeek, day))
                         }
                     } ||
-                    (6..7).any { scheduleState.academicDayOn(displayedWeek, it)?.kind == AcademicDayKind.MAKEUP }
+                    (6..7).any { scheduleState.academicDayOn(displayedWeek, it) != null }
                 val compactWeekend = !weekendHasClass && weekendDisplayMode == WeekendDisplayMode.FOLD_EMPTY
                 val hideWeekend = !weekendHasClass && weekendDisplayMode == WeekendDisplayMode.HIDE_EMPTY
                 val visibleDays = if (hideWeekend) (1..5).toList() else (1..7).toList()
@@ -505,8 +416,9 @@ fun WeekScreen(
                         }
                     } else emptyList()
                 }
-                val replacedOccurrences = replaceWeekCellContents(occurrences)
-                val shownOccurrences = if (!showHolidayView) replacedOccurrences else replacedOccurrences.flatMap { occurrence ->
+                val replacedOccurrences = remember(occurrences) { replaceWeekCellContents(occurrences) }
+                val shownOccurrences = remember(replacedOccurrences, showHolidayView, activityBlocks) {
+                    if (!showHolidayView) replacedOccurrences else replacedOccurrences.flatMap { occurrence ->
                     val keep = (occurrence.periodStart..occurrence.periodEnd).filter { period ->
                         activityBlocks.none { occurrence.weekday in it.startWeekday..it.endWeekday && period in it.periodStart..it.periodEnd }
                     }
@@ -517,6 +429,7 @@ fun WeekScreen(
                         else runs += period..period
                     }
                     runs.map { occurrence.copy(periodStart=it.first,periodEnd=it.last,layoutPeriodStart=it.first,layoutPeriodEnd=it.last) }
+                    }
                 }
                 val displayedCanPreview = scheduleState.pending.isNotEmpty() || scheduleState.hasScheduleChange(displayedWeek)
                 val onOpenDisplayedDay = remember(displayedWeek, onOpenDay) {
@@ -530,6 +443,9 @@ fun WeekScreen(
                         isCurrentSemesterDate = scheduleState.isCurrentDateInImportedSemester,
                         dateFor = scheduleState::dateFor,
                         academicDayFor = { day -> scheduleState.academicDayOn(displayedWeek, day) },
+                        calendarHighlighted = { day -> cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay.courseAlpha(
+                            scheduleState.dateFor(displayedWeek, day), displayedWeek, day,
+                            scheduleState.importedSchedule?.academicDays.orEmpty(), weekActivities) < 1f },
                         semester = scheduleState.importedSchedule?.semester,
                         compactWeekend = compactWeekend,
                         visibleDays = visibleDays,
@@ -582,7 +498,9 @@ fun WeekScreen(
                             metrics = metrics,
                             periodFor = scheduleState::periodFor,
                             courseFontSize = courseFontSize,
-                            fadedDays = if (showHolidayView) emptySet() else visibleDays.filter { scheduleState.academicDayOn(displayedWeek,it)?.kind == AcademicDayKind.HOLIDAY }.toSet(),
+                            fadedDays = if (showHolidayView) emptySet() else visibleDays.filter { day -> cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay.courseAlpha(
+                                scheduleState.dateFor(displayedWeek, day), displayedWeek, day,
+                                scheduleState.importedSchedule?.academicDays.orEmpty(), weekActivities) < 1f }.toSet(),
                         )
                         }
                     }
@@ -591,7 +509,7 @@ fun WeekScreen(
         }
     }
 
-    if (weekSheetOpen) {
+    if (weekSheetOpen && active) {
         WeekChoiceSheet(
             selected = week,
             totalWeeks = totalWeeks,
@@ -600,54 +518,7 @@ fun WeekScreen(
             onDismiss = { weekSheetOpen = false },
         )
     }
-    if (addSheetOpen) {
-        WeekAddSheet(
-            onAddCourse = {
-                addSheetOpen = false
-                addingCourse = true
-            },
-            onAddActivity = {
-                addSheetOpen = false
-                editingActivity = ScheduleActivity(
-                    id = "",
-                    semesterId = scheduleState.importedSchedule?.semester?.id.orEmpty(),
-                    name = "",
-                    kind = ActivityKind.PERIOD,
-                    weekday = if (week == currentWeek) scheduleState.todayWeekday else 1,
-                    periodStart = 1,
-                    periodEnd = 2,
-                    weeks = listOf(week.coerceIn(1, totalWeeks.coerceAtLeast(1))),
-                    startDate = scheduleState.dateFor(week, 1),
-                    endDate = scheduleState.dateFor(week, 5),
-                    color = coursePresetColors.firstOrNull() ?: 0,
-                )
-            },
-            onDismiss = { addSheetOpen = false },
-        )
-    }
-    editingAcademicDay?.let { original ->
-        val schedule = scheduleState.importedSchedule
-        if (schedule != null) {
-            val persisted = schedule.academicDays.any { it.id == original.id }
-            AcademicDayEditSheet(
-                day = original,
-                semester = schedule.semester,
-                onSave = { updated ->
-                    onSaveAcademicDays(
-                        schedule.academicDays
-                            .filterNot { it.id == original.id || it.date == updated.date }
-                            .plus(updated),
-                    )
-                    editingAcademicDay = null
-                },
-                onDelete = if (persisted) ({
-                    onSaveAcademicDays(schedule.academicDays.filterNot { it.id == original.id })
-                    editingAcademicDay = null
-                }) else null,
-                onDismiss = { editingAcademicDay = null },
-            )
-        }
-    }
+
 }
 
 @Composable
@@ -689,7 +560,7 @@ private fun WeekTopBar(
                     Text(
                         monthTitle,
                         style = QztcTypography.compact,
-                        color = colors.mut,
+                        color = cn.qztc.timetable.core.ui.glass.LocalGlassForeground.current?.copy(alpha = .78f) ?: colors.mut,
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         modifier = Modifier.padding(end = 4.dp),
@@ -707,10 +578,10 @@ private fun WeekTopBar(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("第${week}周", style = QztcTypography.courseTitle, color = colors.ink)
+                Text("第${week}周", style = QztcTypography.courseTitle, color = cn.qztc.timetable.core.ui.glass.LocalGlassForeground.current ?: colors.ink)
                 Spacer(Modifier.size(8.dp))
                 if (week == currentWeek) {
-                    Text("本周", style = QztcTypography.courseTitle, color = colors.accentDeep)
+                    Text("本周", style = QztcTypography.courseTitle, color = cn.qztc.timetable.core.ui.glass.LocalGlassForeground.current ?: colors.accentDeep)
                 } else {
                     Text(
                         "回本周",
@@ -754,51 +625,6 @@ private fun ActivitySaveConflictHost(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WeekAddSheet(
-    onAddCourse: () -> Unit,
-    onAddActivity: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LocalQztcColors.current
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    ) {
-        Column(Modifier.padding(bottom = QztcSpacing.xxl)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 58.dp)
-                    .clickable(onClick = onAddCourse)
-                    .padding(horizontal = QztcSpacing.xl),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Outlined.Edit, contentDescription = null, tint = colors.accent)
-                Column(Modifier.padding(start = QztcSpacing.md).weight(1f)) {
-                    Text("添加课程", style = QztcTypography.body, color = colors.ink)
-                    Text("自行填写课程名、时间和教室", style = QztcTypography.meta, color = colors.mut)
-                }
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 58.dp)
-                    .clickable(onClick = onAddActivity)
-                    .padding(horizontal = QztcSpacing.xl),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Outlined.Event, contentDescription = null, tint = colors.accent)
-                Column(Modifier.padding(start = QztcSpacing.md).weight(1f)) {
-                    Text("添加活动", style = QztcTypography.body, color = colors.ink)
-                    Text("按课程时间合并格子，或按日期跨天合并", style = QztcTypography.meta, color = colors.mut)
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun WeekHeader(
     week: Int,
@@ -807,6 +633,7 @@ private fun WeekHeader(
     isCurrentSemesterDate: Boolean,
     dateFor: (Int, Int) -> java.time.LocalDate,
     academicDayFor: (Int) -> cn.qztc.timetable.core.domain.calendar.AcademicDay?,
+    calendarHighlighted: (Int) -> Boolean,
     semester: cn.qztc.timetable.core.domain.model.Semester?,
     compactWeekend: Boolean,
     visibleDays: List<Int>,
@@ -876,13 +703,18 @@ private fun WeekHeader(
                 resolved ?: dateFor(week,day)
             } else dateFor(week,day)
             val isToday = isCurrentSemesterDate && week == currentWeek && todayDay in group
-            val color = if (mark?.kind == AcademicDayKind.MAKEUP) colors.danger else if(isToday) colors.onAccent else colors.ink
+            val color = when {
+                isToday -> Color.White
+                calendarHighlighted(day) -> if (colors.isDark) Color(0xFFA9DABB) else Color(0xFF89B99B)
+                mark?.kind == AcademicDayKind.MAKEUP -> colors.danger
+                else -> colors.ink
+            }
             val before = visibleDays.takeWhile { it != day }
             val x = unit * before.sumOf { dayColumnWeight(it,compactWeekend).toDouble() }.toFloat() + gridGap * before.size
             val width = unit * group.sumOf { dayColumnWeight(it,compactWeekend).toDouble() }.toFloat() + gridGap * (group.size-1)
             Box(Modifier.offset(x=x).width(width)
                 .height(headerHeight).clip(RoundedCornerShape(10.dp))
-                .background(if(isToday && mark?.kind != AcademicDayKind.MAKEUP) colors.accent else colors.solid.copy(alpha=.78f))
+                .background(if(isToday) colors.accent else colors.solid.copy(alpha=.78f))
                 .clickable { onOpenDay(day) }, contentAlignment=Alignment.Center) {
                 Column(horizontalAlignment=Alignment.CenterHorizontally) {
                     Text(if(holiday) mark!!.name.take(2) else "周${names[sourceDate.dayOfWeek.value-1]}",style=QztcTypography.compact,color=color)
@@ -903,7 +735,7 @@ internal fun hasWeekActivityView(schedule: ImportedSchedule?, week: Int): Boolea
         val first = dates.getValue(1)
         val last = dates.getValue(7)
         it.academicDays.any { day -> day.date in first..last } ||
-            it.activities.any { activity ->
+            it.activities.filter(cn.qztc.timetable.core.domain.schedule.CalendarActivityDisplay::inTimetable).any { activity ->
                 dates.any { (weekday, date) -> activity.appliesOn(week, weekday, date) }
             }
     } == true
@@ -1032,8 +864,17 @@ private fun autoWeekCourseFontSize(
             }
         }
 
-        val largestFit = (21..56).map { it / 2f }.lastOrNull { fits(it.sp) }
-        (largestFit ?: 10.5f).sp
+        var low = 21
+        var high = 56
+        var largestFit = 21
+        while (low <= high) {
+            val mid = (low + high) / 2
+            if (fits((mid / 2f).sp)) {
+                largestFit = mid
+                low = mid + 1
+            } else high = mid - 1
+        }
+        (largestFit / 2f).sp
     }
 }
 
@@ -1167,6 +1008,17 @@ private fun PeriodGridRow(
     val colors = LocalQztcColors.current
     val contentAlpha = LocalGlassSettings.current.contentAlpha
     val period = periodFor(periodNo)
+    val density = LocalDensity.current
+    val lineHeight = minOf(QztcTypography.compact.lineHeight.value,
+        (metrics.periodHeight.value - 6f) / (3f * density.fontScale)).sp
+    val timeStyle = QztcTypography.compact.copy(
+        fontSize = minOf(QztcTypography.compact.fontSize.value, lineHeight.value / 1.3f,
+            13f / density.fontScale).sp,
+        lineHeight = lineHeight,
+        letterSpacing = 0.sp,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+    )
     Row(
         Modifier.fillMaxWidth().height(metrics.periodHeight).clipToBounds(),
         horizontalArrangement = Arrangement.spacedBy(gridGap),
@@ -1183,11 +1035,11 @@ private fun PeriodGridRow(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(numberLabel, style = QztcTypography.compact, color = colors.ink)
-                Text(period.startTime.toString(), style = QztcTypography.compact, color = colors.mut)
-                if (metrics.periodHeight >= 48.dp) {
-                    Text(period.endTime.toString(), style = QztcTypography.compact, color = colors.mut)
-                }
+                Text(numberLabel, Modifier.fillMaxWidth(), style = timeStyle, color = colors.ink, maxLines = 1)
+                Text(period.startTime.toString(), Modifier.fillMaxWidth().testTag("week-period-start-$periodNo"),
+                    style = timeStyle, color = colors.mut, maxLines = 1)
+                Text(period.endTime.toString(), Modifier.fillMaxWidth().testTag("week-period-end-$periodNo"),
+                    style = timeStyle, color = colors.mut, maxLines = 1)
             }
         }
         Row(

@@ -28,105 +28,21 @@ import org.junit.Rule
 import org.junit.Test
 
 class ActivitySyncAcceptanceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<FeatureAcceptanceActivity>()
 
-    @Test fun addAndDeleteActivityPersistsFromCourseArrangement() {
-        val label = "QA 活动同步验收"
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val database = TimetableDatabase.build(context)
-        val repository = TimetableRepository(database)
-        var seededFixture = false
-        val semester = runBlocking {
-            val settings = repository.settings()
-            val available = repository.semesters()
-            val current = available.firstOrNull { it.id == settings.activeSemesterId } ?: available.firstOrNull()
-            if (current != null) {
-                current
-            } else {
-                val today = LocalDate.now()
-                val fixture = Semester(
-                    id = "qa-activity-sync-fixture",
-                    name = "合成活动学期",
-                    schoolYear = today.year,
-                    term = Term.AUTUMN,
-                    startDate = today,
-                    totalWeeks = 20,
-                )
-                repository.upsertSemester(fixture)
-                repository.upsertPeriodScheme(PeriodSchemeFactory.forSemester(fixture.id))
-                val course = Course(
-                    id = "qa-activity-sync-course",
-                    semesterId = fixture.id,
-                    sourceType = cn.qztc.timetable.core.domain.model.SourceType.MANUAL,
-                    sourceKey = "qa-activity-sync-course",
-                    name = "合成课程",
-                )
-                repository.updateCourseAndMeeting(
-                    course,
-                    previousMeeting = null,
-                    meeting = CourseMeeting(
-                        id = CourseMeeting.stableId(course.id, 1, 1, 2),
-                        courseId = course.id,
-                        weekday = 1,
-                        periodStart = 1,
-                        periodEnd = 2,
-                        weekRule = cn.qztc.timetable.core.domain.model.WeekRule.of((1..20).toList()),
-                        sourceType = cn.qztc.timetable.core.domain.model.SourceType.MANUAL,
-                    ),
-                )
-                repository.updateSettings(settings.copy(activeSemesterId = fixture.id))
-                seededFixture = true
-                fixture
-            }
-        }
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        listOf(
-            "android.permission.POST_NOTIFICATIONS",
-            "android.permission.ACCESS_COARSE_LOCATION",
-            "android.permission.ACCESS_FINE_LOCATION",
-        ).forEach { permission ->
-            uiAutomation.executeShellCommand("pm grant ${context.packageName} $permission").close()
-        }
-        if (seededFixture) compose.activityRule.scenario.recreate()
-
-        fun removeFixture() = runBlocking {
-            repository.activities(semester.id)
-                .filter { it.name == label }
-                .forEach { repository.deleteActivity(it.id, restoreCourses = true) }
-        }
-
-        removeFixture()
-        try {
-            compose.waitUntil(60_000) {
-                runCatching {
-                    compose.onAllNodesWithText("我的").fetchSemanticsNodes().isNotEmpty()
-                }.getOrDefault(false)
-            }
-            compose.onNodeWithContentDescription("我的").performClick()
-            compose.onNodeWithText("课程安排").performScrollTo().performClick()
-            compose.waitUntil(20_000) {
-                compose.onAllNodesWithText("活动安排").fetchSemanticsNodes().isNotEmpty()
-            }
-
-            compose.onNodeWithText("添加").performClick()
-            compose.onNode(hasSetTextAction() and hasText("活动名称")).performTextInput(label)
-            compose.onNodeWithText("完成").performClick()
-            compose.waitUntil(15_000) {
-                compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
-            }
-            assertTrue(runBlocking { repository.activities(semester.id).any { it.name == label } })
-            compose.onNodeWithText(label).performClick()
-            compose.onNodeWithText("删除活动").performClick()
-            compose.onNodeWithText("删除").performClick()
-            compose.waitUntil(15_000) {
-                compose.onAllNodesWithText(label).fetchSemanticsNodes().isEmpty()
-            }
-            assertTrue(runBlocking { repository.activities(semester.id).none { it.name == label } })
-        } finally {
-            removeFixture()
-            database.close()
-            if (seededFixture) context.deleteDatabase(TimetableDatabase.DEFAULT_NAME)
-        }
+    @Test fun courseArrangementRoutesActivityManagementToCalendar() {
+        val today = LocalDate.now()
+        val semester = Semester("qa-calendar-routing", "test", today.year, Term.AUTUMN, today, 20)
+        var opened: LocalDate? = null
+        compose.setContent { QztcTheme {
+            cn.qztc.timetable.feature.settings.SemesterScheduleSettingsScreen(
+                semester = semester, periodScheme = PeriodSchemeFactory.forSemester(semester.id),
+                onSave = { _, _, _ -> }, onBack = {}, onOpenCalendar = { opened = it },
+            )
+        } }
+        compose.onNodeWithText("在日历中管理").performScrollTo().performClick()
+        compose.runOnIdle { org.junit.Assert.assertEquals(today, opened) }
+        compose.onNodeWithText("添加活动").assertDoesNotExist()
     }
 }
 
@@ -139,7 +55,7 @@ class ActivityPresentationAcceptanceTest {
         val start = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val semester = Semester("qa-activity-pages", "合成活动学期", today.year, Term.AUTUMN, start, 20)
         val activity = ScheduleActivity(
-            id = "qa-activity-pages:item",
+            id = "calendar-event:qa-activity-pages:item",
             semesterId = semester.id,
             name = label,
             kind = ActivityKind.DAY,

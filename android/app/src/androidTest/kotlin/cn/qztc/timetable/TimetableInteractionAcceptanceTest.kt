@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.PixelCopy
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -343,14 +344,16 @@ class TimetableInteractionAcceptanceTest {
         val original = state.importedSchedule!!
         val base = original.state.meetings.single()
         val monday = base.copy(periodStart=7, periodEnd=10, teacher="旧教师", room="旧地点")
-        val tuesday = base.copy(id="moved-source", weekday=2, periodStart=7, periodEnd=9, teacher="来源教师")
-        val move = ScheduleException("move-partial",base.courseId,ExceptionType.MOVE,
+        val movedCourse = original.state.courses.single().copy(id="moved-course", name="调入课程")
+        val tuesday = base.copy(id="moved-source", courseId=movedCourse.id, weekday=2, periodStart=7, periodEnd=9, teacher="来源教师")
+        val move = ScheduleException("move-partial",movedCourse.id,ExceptionType.MOVE,
             original=SlotRef(1,2,7,9), replacement=SlotRef(1,1,7,9,teacher="新教师",room="新地点"),
             sourceType=SourceType.MANUAL)
-        state.loadImported(original.copy(state=original.state.copy(meetings=listOf(monday,tuesday),exceptions=listOf(move))))
+        state.loadImported(original.copy(state=original.state.copy(courses=original.state.courses + movedCourse,
+            meetings=listOf(monday,tuesday),exceptions=listOf(move))))
         compose.setContent { QztcTheme { WeekScreen(state,{_,_->},initialWeek=1,weekendDisplayMode=WeekendDisplayMode.SHOW_ALL) } }
         val trimmedId = "${base.courseId}-${base.id}-1-10-10"
-        val newCell = compose.onNodeWithTag("week-course-${base.courseId}-exception-1-7-9")
+        val newCell = compose.onNodeWithTag("week-course-${movedCourse.id}-exception-1-7-9")
         val oldCell = compose.onNodeWithTag("week-course-$trimmedId")
         val newBounds = newCell.getUnclippedBoundsInRoot()
         val oldBounds = oldCell.getUnclippedBoundsInRoot()
@@ -362,12 +365,39 @@ class TimetableInteractionAcceptanceTest {
         screenshot("week-replaced-content-no-overlap.png")
     }
 
+    @Test fun shortWeekGridKeepsBothTimesWithoutTextOverflowAtLargeFontScale() {
+        val state = state()
+        val original = state.importedSchedule!!
+        state.loadImported(original.copy(state=TimetableState.EMPTY))
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.35f)) {
+                QztcTheme { Box(Modifier.width(360.dp).height(570.dp)) {
+                    WeekScreen(state,{_,_->},initialWeek=1,weekendDisplayMode=WeekendDisplayMode.HIDE_EMPTY)
+                } }
+            }
+        }
+        screenshot("short-week-all-period-times.png")
+        for (period in listOf(1, 4, 7, 10, 13)) {
+            val start = compose.onNodeWithTag("week-period-start-$period", useUnmergedTree=true)
+            val end = compose.onNodeWithTag("week-period-end-$period", useUnmergedTree=true)
+            start.assertIsDisplayed()
+            end.assertIsDisplayed()
+            val layouts = mutableListOf<TextLayoutResult>()
+            end.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertTrue("End time is clipped for period $period: ${layouts.map { "${it.size} ${it.layoutInput.style} width=${it.didOverflowWidth} height=${it.didOverflowHeight}" }}",
+                layouts.isNotEmpty() && layouts.none { it.hasVisualOverflow })
+            assertTrue(start.getUnclippedBoundsInRoot().bottom <= end.getUnclippedBoundsInRoot().top)
+        }
+        screenshot("short-week-all-period-times.png")
+    }
+
     @Test fun partialActivityOwnsItsSlotsAndEmptyCellsReturnWhenRemoved() {
         val state=state()
         val original=state.importedSchedule!!
         val meeting=original.state.meetings.single().copy(periodStart=1,periodEnd=4)
         val activity=ScheduleActivity(
-            id="slot-test",semesterId=original.semester.id,name="分段活动",note="活动备注",
+            id="calendar-event:slot-test",semesterId=original.semester.id,name="分段活动",note="活动备注",
             kind=ActivityKind.PERIOD,weekday=1,periodStart=2,periodEnd=3,weeks=listOf(1),
         )
         val schedule=original.copy(state=original.state.copy(meetings=listOf(meeting)),activities=listOf(activity))
@@ -386,12 +416,12 @@ class TimetableInteractionAcceptanceTest {
         (1..4).forEach { compose.onNodeWithTag("week-empty-1-$it").assertExists() }
     }
 
-    @Test fun timetableEditOnlyOffersCourseAndActivity() {
+    @Test fun timetableEditOpensCourseEditorOnly() {
         val state=state()
         compose.setContent { QztcTheme { WeekScreen(state,{_,_->}) } }
         compose.onNodeWithContentDescription("编辑课表").performClick()
         compose.onNodeWithText("添加课程").assertIsDisplayed()
-        compose.onNodeWithText("添加活动").assertIsDisplayed()
+        compose.onNodeWithText("添加活动").assertDoesNotExist()
         compose.onNodeWithText("设置调休").assertDoesNotExist()
         compose.onNodeWithText("编辑周课表").assertDoesNotExist()
     }
@@ -403,4 +433,23 @@ class TimetableInteractionAcceptanceTest {
         compose.onNodeWithText("选择日期",substring=true).assertExists()
         assertEquals(2,state.selectedDay)
     }
+    @Test fun manualActivityIsAbsentAndSchoolActivityOpensCalendarOnItsDate() {
+        val state = state()
+        val original = state.importedSchedule!!
+        val manual = ScheduleActivity("manual-test", original.semester.id, "manual calendar only", kind = ActivityKind.DAY,
+            startDate = original.semester.startDate, endDate = original.semester.startDate)
+        state.loadImported(original.copy(activities = listOf(manual)))
+        var opened: LocalDate? = null
+        compose.setContent { QztcTheme { WeekScreen(state, { _, _ -> }, initialWeek = 1,
+            onOpenCalendar = { opened = it }) } }
+        compose.onNodeWithText(manual.name).assertDoesNotExist()
+        compose.onNodeWithTag("week-book-open").assertDoesNotExist()
+        val school = manual.copy(id = "calendar-event:school-test", name = "school sports")
+        compose.runOnIdle { state.loadImported(original.copy(activities = listOf(manual, school))) }
+        compose.onNodeWithTag("week-book-open").performClick()
+        compose.onNodeWithText(manual.name).assertDoesNotExist()
+        compose.onNodeWithText(school.name).performClick()
+        compose.runOnIdle { assertEquals(original.semester.startDate, opened) }
+    }
+
 }

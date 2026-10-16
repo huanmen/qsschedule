@@ -1,7 +1,9 @@
 package cn.qztc.timetable.core.ui.theme
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.qztc.timetable.core.ui.glass.GlassRole
 import cn.qztc.timetable.core.ui.glass.GlassSurface
+import cn.qztc.timetable.core.ui.glass.LocalGlassForeground
 
 /** 与周课表顶栏对齐的导航尺寸。 */
 object QztcTopBarTokens {
@@ -40,6 +43,11 @@ fun QztcPageTopBar(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     subtitle: String? = null,
+    centeredTitle: Boolean = false,
+    navigation: (@Composable () -> Unit)? = null,
+    onTitleClick: (() -> Unit)? = null,
+    titleTrailing: (@Composable () -> Unit)? = null,
+    centerContent: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = LocalQztcColors.current
@@ -51,6 +59,8 @@ fun QztcPageTopBar(
             .padding(horizontal = QztcTopBarTokens.HorizontalPadding, vertical = QztcTopBarTokens.VerticalPadding),
         pressGlint = true,
     ) {
+        val foreground = LocalGlassForeground.current ?: colors.ink
+        Box(contentAlignment=Alignment.Center) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -58,26 +68,33 @@ fun QztcPageTopBar(
                 .padding(horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (onBack != null) {
+            if (navigation != null) navigation()
+            else if (onBack != null) {
                 QztcTopIconButton(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = "返回",
                     onClick = onBack,
                 )
             }
-            Column(Modifier.weight(1f).padding(start = if (onBack != null) 2.dp else 10.dp, end = 8.dp)) {
+            if (centeredTitle && onBack == null && navigation == null) androidx.compose.foundation.layout.Spacer(Modifier.size(40.dp))
+            Column(Modifier.weight(1f).padding(start = if (onBack != null || centeredTitle) 2.dp else 10.dp, end = if (centeredTitle) 2.dp else 8.dp),
+                horizontalAlignment = if (centeredTitle) Alignment.CenterHorizontally else Alignment.Start) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(
                     title,
+                    modifier = if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier,
                     style = QztcTypography.courseTitle,
-                    color = colors.ink,
+                    color = foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                titleTrailing?.invoke()
+                }
                 if (!subtitle.isNullOrBlank()) {
                     Text(
                         subtitle,
                         style = QztcTypography.compact,
-                        color = colors.mut,
+                        color = foreground.copy(alpha = .75f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -88,6 +105,8 @@ fun QztcPageTopBar(
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 content = actions,
             )
+        }
+        centerContent?.invoke()
         }
     }
 }
@@ -102,12 +121,13 @@ fun QztcTopIconButton(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalQztcColors.current
+    val foreground = LocalGlassForeground.current ?: colors.ink
     IconButton(
         onClick = onClick,
         enabled = enabled,
         colors = IconButtonDefaults.iconButtonColors(
             containerColor = Color.Transparent,
-            contentColor = colors.ink,
+            contentColor = foreground,
             disabledContainerColor = Color.Transparent,
             disabledContentColor = colors.faint,
         ),
@@ -116,7 +136,7 @@ fun QztcTopIconButton(
         Icon(
             icon,
             contentDescription = contentDescription,
-            tint = tint ?: if (enabled) colors.ink else colors.faint,
+            tint = tint ?: if (enabled) foreground else foreground.copy(alpha = .4f),
             modifier = Modifier.size(QztcTopBarTokens.IconSize),
         )
     }

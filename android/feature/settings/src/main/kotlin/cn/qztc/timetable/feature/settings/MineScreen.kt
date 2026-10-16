@@ -1,4 +1,5 @@
 package cn.qztc.timetable.feature.settings
+import androidx.compose.material.icons.outlined.Assignment
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,12 +30,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.EventRepeat
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ViewWeek
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.RateReview
 import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Place
@@ -57,12 +66,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -131,9 +143,11 @@ data class MineUiState(
     val periodScheme: PeriodScheme? = null,
     val semesters: List<MineSemesterOption> = emptyList(),
     val updateLabel: String = "检查最新版本",
+    val teachingWeeks: Int? = null,
 )
 
 data class MineSemesterOption(val id: String, val label: String)
+data class MinePinnedPlugin(val name: String, val onClick: () -> Unit)
 
 private data class SettingItem(
     val title: String,
@@ -159,25 +173,102 @@ fun MineScreen(
     onFontSizeModeChange: (FontSizeMode) -> Unit = {},
     onFontScaleChange: (Float) -> Unit = {},
     onEduImportClick: () -> Unit,
+    onStudyClick: () -> Unit = {},
+    onEvaluationClick: () -> Unit = {},
     onCampusAliasClick: () -> Unit,
     onCampusMapClick: () -> Unit = onCampusAliasClick,
+    onHomeworkClick: () -> Unit = {},
     onStartDateClick: () -> Unit,
+    onSchoolCalendarClick: () -> Unit = onStartDateClick,
     onSemesterSelect: (String) -> Unit,
     onDataClick: () -> Unit,
     onStorageClick: () -> Unit = {},
     onAdSkipClick: () -> Unit = {},
     onPluginMarketClick: () -> Unit = onAdSkipClick,
+    onAnnouncementsClick: () -> Unit = {},
+    unreadAnnouncements: Int = 0,
     onPrivacyAboutClick: () -> Unit,
     onCheckUpdateClick: () -> Unit = {},
+    onCompetitionsClick: () -> Unit = {},
+    onCalendarClick: () -> Unit = {},
+    onCreditsClick: () -> Unit = onStudyClick,
+    onCheckChangesClick: () -> Unit = onEduImportClick,
+    onSettingsVisibilityChange: (Boolean) -> Unit = {},
+    pinnedPlugins: List<MinePinnedPlugin> = emptyList(),
+    active: Boolean = true,
 ) {
     val colors = LocalQztcColors.current
     var homeSheetOpen by remember { mutableStateOf(false) }
     var weekendSheetOpen by remember { mutableStateOf(false) }
     var semesterSheetOpen by remember { mutableStateOf(false) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    val settingsScrollState = rememberLazyListState()
+    BackHandler(enabled = settingsOpen && active) { settingsOpen = false }
+    LaunchedEffect(settingsOpen, active) { onSettingsVisibilityChange(settingsOpen && active) }
+    DisposableEffect(Unit) { onDispose { onSettingsVisibilityChange(false) } }
+
+    // Dispose interactive UI when covered, retaining screen and scroll state above.
+    if (!active) return
+    if (!settingsOpen) {
+        Column(modifier.fillMaxSize().background(colors.solid2).statusBarsPadding()) {
+            QztcPageTopBar("我的", centeredTitle = true, navigation = {
+                IconButton(onClick = onAnnouncementsClick) {
+                    Icon(Icons.Outlined.Notifications, if (unreadAnnouncements > 0) "公告 · $unreadAnnouncements 条未读" else "公告", tint = colors.ink)
+                }
+            }, actions = {
+                IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Outlined.Settings, "设置", tint = colors.ink) }
+            })
+            LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                if (state.activeSemester != null) item {
+                    SemesterProgressCard(state.activeSemester, state.teachingWeeks, "导入课表", onEduImportClick,
+                        onSemesterSwitch = { semesterSheetOpen = true })
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(Triple("停课与调课", Icons.Outlined.EventRepeat, onCheckChangesClick),
+                            Triple("成绩与学分", Icons.Outlined.School, onStudyClick),
+                            Triple("活动安排", Icons.Outlined.CalendarMonth, onStartDateClick)).forEach { (label, icon, action) ->
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(colors.solid).clickable(enabled = active, interactionSource = null, indication = null, onClick = action).padding(vertical = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(icon, null, Modifier.size(22.dp), tint = colors.accentDeep)
+                                Text(label, style = QztcTypography.compact, color = colors.ink, maxLines = 1)
+                            }
+                        }
+                    }
+                    SettingGroup("常用工具", listOf(
+                        SettingItem("作业查询", "教学平台作业与提交记录", Icons.Outlined.Assignment, onClick = onHomeworkClick),
+                        SettingItem("校历查询", "学年校历、节假日与学校安排", Icons.Outlined.CalendarMonth, onClick = onSchoolCalendarClick),
+                        SettingItem("校园地图", "查看校区、教学楼与路线", Icons.Outlined.Map, onClick = onCampusMapClick),
+                    ))
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = QztcSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                            Text("插件市场", Modifier.weight(1f), style = QztcTypography.section, color = colors.mut)
+                            Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onPluginMarketClick), verticalAlignment = Alignment.CenterVertically) {
+                                Text("查看更多", style = QztcTypography.compact, color = colors.accentDeep)
+                                Text(" >", style = QztcTypography.compact, color = colors.accentDeep)
+                            }
+                        }
+                        SettingGroup("", if (pinnedPlugins.isEmpty()) listOf(
+                            SettingItem("浏览插件", "安装与管理扩展工具", Icons.Outlined.AutoAwesome, onClick = onPluginMarketClick)
+                        ) else pinnedPlugins.map { SettingItem(it.name, "", Icons.Outlined.AutoAwesome, onClick = it.onClick) })
+                    }
+                }
+            }
+        }
+        if (semesterSheetOpen && active) ChoiceSheet(
+            title = "切换学期", options = state.semesters.map { it.id to it.label }, selected = state.activeSemesterId.orEmpty(),
+            onSelect = { semesterSheetOpen = false; onSemesterSelect(it) }, onDismiss = { semesterSheetOpen = false })
+        return
+    }
 
     val homeLabel = when (state.homePreference) {
         HomePreference.TODAY -> "今日"
         HomePreference.WEEK -> "周课表"
+        HomePreference.CALENDAR -> "日历"
         HomePreference.LAST -> "记住上次"
     }
     val weekendLabel = when (state.weekendDisplayMode) {
@@ -191,23 +282,6 @@ fun MineScreen(
     }
 
     val groups = listOf(
-        "学期" to listOf(
-            SettingItem(
-                "课程安排",
-                "教务账号、学期、开学日期与校历",
-                Icons.Outlined.CalendarMonth,
-                value = state.activeSemesterLabel,
-                onClick = onStartDateClick,
-            ),
-            SettingItem(
-                "校园地图",
-                "本地地图、校内路线和地点编辑",
-                Icons.Outlined.Place,
-                // Opening the map is a view action. Editing is an explicit
-                // mode behind the pencil in the map header.
-                onClick = onCampusMapClick,
-            ),
-        ),
         "提醒" to listOf(
             SettingItem(
                 "提醒设置",
@@ -224,9 +298,6 @@ fun MineScreen(
             SettingItem("首页视图", "启动时先打开的页面", Icons.Outlined.Home, value = homeLabel, onClick = { homeSheetOpen = true }),
             SettingItem("显示与外观", "深色模式、课程颜色、背景与玻璃", Icons.Outlined.Palette, value = state.backgroundLabel, onClick = onPersonalizationClick),
         ),
-        "扩展工具" to listOf(
-            SettingItem("插件市场", "可选校园工具入口，当前尚未开放", Icons.Outlined.AutoAwesome, onClick = onPluginMarketClick),
-        ),
         "数据" to listOf(
             SettingItem("数据与存储", "快照、导出文件与可清理缓存", Icons.Outlined.Storage, onClick = onStorageClick),
             SettingItem("检查更新", "检查并安装新版本", Icons.Outlined.SystemUpdate, value = state.updateLabel, onClick = onCheckUpdateClick),
@@ -235,9 +306,10 @@ fun MineScreen(
     )
 
     Column(modifier.fillMaxSize().background(colors.solid2).statusBarsPadding()) {
+        QztcPageTopBar("设置", onBack = { settingsOpen = false })
         LazyColumn(
         modifier = Modifier.weight(1f),
-        state = listState,
+        state = settingsScrollState,
         contentPadding = PaddingValues(
             start = QztcSpacing.lg,
             top = QztcSpacing.sm,
@@ -264,12 +336,13 @@ fun MineScreen(
     }
     }
 
-    if (homeSheetOpen) {
+    if (homeSheetOpen && active) {
         ChoiceSheet(
             title = "首页视图",
             options = listOf(
                 HomePreference.TODAY to "今日",
                 HomePreference.WEEK to "周课表",
+                HomePreference.CALENDAR to "日历",
                 HomePreference.LAST to "记住上次",
             ),
             selected = state.homePreference,
@@ -281,7 +354,7 @@ fun MineScreen(
         )
     }
 
-    if (weekendSheetOpen) {
+    if (weekendSheetOpen && active) {
         ChoiceSheet(
             title = "周末列显示",
             options = listOf(
@@ -298,7 +371,7 @@ fun MineScreen(
         )
     }
 
-    if (semesterSheetOpen && state.semesters.isNotEmpty()) {
+    if (semesterSheetOpen && active && state.semesters.isNotEmpty()) {
         ChoiceSheet(
             title = "切换查看学期",
             options = state.semesters.map { it.id to it.label },
@@ -381,7 +454,7 @@ private fun FontSizeSetting(
 private fun SettingGroup(title: String, items: List<SettingItem>) {
     val colors = LocalQztcColors.current
     Column {
-        Text(
+        if (title.isNotBlank()) Text(
             text = title,
             style = QztcTypography.section,
             color = colors.mut,
@@ -416,7 +489,7 @@ private fun SettingRow(item: SettingItem) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 58.dp)
-            .clickable(enabled = item.enabled, onClick = item.onClick)
+            .clickable(enabled = item.enabled, interactionSource = null, indication = null, onClick = item.onClick)
             .padding(horizontal = QztcSpacing.lg, vertical = QztcSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -428,8 +501,9 @@ private fun SettingRow(item: SettingItem) {
         )
         Spacer(Modifier.width(QztcSpacing.lg))
         Column(Modifier.weight(1f)) {
-            Text(item.title, style = QztcTypography.courseTitle, color = if (item.enabled) colors.ink else colors.faint)
-            Text(item.subtitle, style = QztcTypography.meta, color = colors.mut)
+            Text(item.title, style = QztcTypography.courseTitle,
+                color = if (item.enabled) colors.ink else colors.faint)
+            if (item.subtitle.isNotBlank()) Text(item.subtitle, style = QztcTypography.meta, color = colors.mut)
         }
         Spacer(Modifier.width(QztcSpacing.lg))
         when {

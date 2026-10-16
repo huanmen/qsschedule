@@ -1,0 +1,21 @@
+[Unit]
+Description=Refresh attributed public competition and exam reference data
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=qsschedule
+Group=qsschedule
+WorkingDirectory=/opt/qsschedule
+Environment=QSS_DATA=/var/lib/qsschedule
+ExecStart=/opt/qsschedule/exam-venv/bin/python /opt/qsschedule/community_collector.py
+TimeoutStartSec=3min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qsschedule
+UMask=0027
+MemoryMax=128M
+TasksMax=16

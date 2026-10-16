@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import cn.qztc.timetable.core.domain.model.Course
 import cn.qztc.timetable.core.domain.model.ReminderDisplayMode
+import cn.qztc.timetable.core.domain.model.DailyAgendaSettings
 import cn.qztc.timetable.core.ui.theme.*
 import cn.qztc.timetable.feature.timetable.CourseReminderUiState
 import cn.qztc.timetable.feature.timetable.ReminderMinuteChoices
@@ -43,12 +44,16 @@ fun ReminderSettingsScreen(
     onTestReminder: () -> Unit,
     onSystemReminderSettings: () -> Unit,
     onSaveCourseReminder: (String, Int?, String?) -> Unit,
+    dailyAgenda: DailyAgendaSettings = DailyAgendaSettings(),
+    onDailyAgendaChange: (DailyAgendaSettings) -> Unit = {},
+    onPreviewDailyAgenda: () -> Unit = {},
+    academicPluginInstalled: Boolean = false,
+    onPluginMarket: () -> Unit = {},
+    onRemindOnHolidaysChange: (Boolean) -> Unit = {},
 ) {
     val colors = LocalQztcColors.current
     var expandedCourse by rememberSaveable { mutableStateOf<String?>(null) }
     var showAddCourses by rememberSaveable { mutableStateOf(false) }
-    var reportedMissing by remember(testState) { mutableStateOf(false) }
-    var confirmedReceived by remember(testState) { mutableStateOf(false) }
     val sortedCourses = remember(courses) { courses.distinctBy { it.id }.sortedBy { it.name } }
     val included = sortedCourses.filter { state.overrides[it.id] != 0 }
     val excluded = sortedCourses.filter { state.overrides[it.id] == 0 }
@@ -58,7 +63,10 @@ fun ReminderSettingsScreen(
             Modifier.weight(1f).imePadding().testTag("reminder-settings-list"),
             contentPadding = PaddingValues(QztcSpacing.lg),
         ) {
-            item(key = "enabled") {
+            item(key = "daily-agenda") {
+                DailyAgendaOptions(dailyAgenda, onDailyAgendaChange, onPreviewDailyAgenda, academicPluginInstalled, onPluginMarket)
+            }
+            item(key = "course-reminders") {
                 ReminderSettingsSection("上课提醒") {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -67,49 +75,22 @@ fun ReminderSettingsScreen(
                         }
                         Switch(state.enabled, onRemindersEnabledChange, Modifier.testTag("reminder-enabled"))
                     }
-                }
-            }
-            item(key = "timing") {
-                ReminderSettingsSection("默认提前时间") {
+                    HorizontalDivider(color = colors.line)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("节假日也提醒", Modifier.weight(1f), style = QztcTypography.body, color = colors.ink)
+                        Switch(state.remindOnHolidays, onRemindOnHolidaysChange, Modifier.testTag("course-remind-holidays"))
+                    }
+                    Text("开启后，校历放假日仍按原课程提醒；调休按实际课表提醒。", style = QztcTypography.meta, color = colors.mut)
+                    Text("默认提前时间", style = QztcTypography.body, color = colors.ink)
                     ReminderMinuteChoices(state.minutes, onReminderMinutesChange)
                     Text("未单独设置的课程使用这个时间", style = QztcTypography.meta, color = colors.mut)
-                }
-            }
-            item(key = "display") {
-                ReminderSettingsSection("显示方式") {
-                    val modes = listOf(ReminderDisplayMode.SCREEN_POPUP, ReminderDisplayMode.NOTIFICATION_BAR)
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        modes.forEachIndexed { index, mode ->
-                            SegmentedButton(
-                                selected = state.displayMode == mode,
-                                onClick = { onReminderDisplayModeChange(mode) },
-                                shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                                label = { Text(if (mode == ReminderDisplayMode.SCREEN_POPUP) "弹窗提醒" else "仅通知栏") },
-                            )
-                        }
-                    }
-                    if (testState.running) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(when {
-                        reportedMissing -> "未收到测试提醒，请调整系统通知设置后重试。"
-                        confirmedReceived -> "已确认收到提醒"
-                        testState.message.isNotBlank() -> testState.message
-                        else -> "点击一种显示方式，会自动发送测试提醒。"
-                    }, style = QztcTypography.meta, color = colors.mut)
-                    if (testState.needsConfirmation && !reportedMissing && !confirmedReceived) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { confirmedReceived = true }) { Text("已收到") }
-                            TextButton(onClick = { reportedMissing = true }) { Text("没有收到") }
-                        }
-                    }
-                    if (testState.needsSystemSettings || reportedMissing) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = onSystemReminderSettings) { Text("系统通知设置") }
-                            TextButton(onClick = onTestReminder, enabled = !testState.running) { Text("重新测试") }
-                        }
-                    }
-                }
-            }
-            item(key = "course-heading") {
+                    HorizontalDivider(color = colors.line)
+                    Text("显示方式", style = QztcTypography.body, color = colors.ink)
+                    QztcReminderModeOptions(state.displayMode==ReminderDisplayMode.SCREEN_POPUP,
+                        {onReminderDisplayModeChange(if(it)ReminderDisplayMode.SCREEN_POPUP else ReminderDisplayMode.NOTIFICATION_BAR)},
+                        ReminderPreviewState(testState.running,testState.message,testState.needsSystemSettings,testState.needsConfirmation),
+                        onTestReminder,onSystemReminderSettings)
+                    HorizontalDivider(color = colors.line)
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("已加入提醒的课程", style = QztcTypography.section, color = colors.ink)
@@ -123,14 +104,13 @@ fun ReminderSettingsScreen(
                     if (sortedCourses.isEmpty()) "导入课表后，可在这里设置课程提醒。" else "还没有加入提醒的课程",
                     style = QztcTypography.body, color = colors.mut, modifier = Modifier.padding(bottom = 12.dp),
                 )
-            }
-            if (showAddCourses) itemsIndexed(excluded, key = { _, it -> "excluded:${it.id}" }) { _, course ->
+            if (showAddCourses) excluded.forEach { course ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(course.name, Modifier.weight(1f), style = QztcTypography.body, color = colors.mut)
                     TextButton(onClick = { onSaveCourseReminder(course.id, null, state.messages[course.id]) }) { Text("加入提醒") }
                 }
             }
-            itemsIndexed(included, key = { _, it -> "course:${it.id}" }) { index, course ->
+            included.forEachIndexed { index, course ->
                 ReminderCourseRow(course, state, expandedCourse == course.id,
                     onToggle = { expandedCourse = if (expandedCourse == course.id) null else course.id },
                     onSave = { minutes, message ->
@@ -139,6 +119,64 @@ fun ReminderSettingsScreen(
                     })
                 if (index < included.lastIndex) HorizontalDivider(color = colors.line)
             }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DailyAgendaOptions(settings: DailyAgendaSettings, onChange: (DailyAgendaSettings) -> Unit, onPreview: () -> Unit, academicPluginInstalled: Boolean, onPluginMarket: () -> Unit) {
+    val colors = LocalQztcColors.current
+    var choosingTime by remember { mutableStateOf(false) }
+    ReminderSettingsSection("每日待办") {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("每天汇总当天已加入的安排", Modifier.weight(1f), style = QztcTypography.body)
+            Switch(settings.enabled, { onChange(settings.copy(enabled = it)) }, Modifier.testTag("daily-agenda-enabled"))
+        }
+        TextButton(onClick = { choosingTime = true }, modifier = Modifier.testTag("daily-agenda-time")) {
+            Text("通知时间  %02d:%02d".format(settings.hour, settings.minute))
+        }
+        Row(Modifier.fillMaxWidth()) {
+            listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
+                val day = index + 1
+                FilterChip(day in settings.weekdays, onClick = {
+                    onChange(settings.copy(weekdays = if (day in settings.weekdays) settings.weekdays - day else settings.weekdays + day))
+                }, label = { Text(label) }, modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(4.dp))
+            }
+        }
+        if (!academicPluginInstalled) TextButton(onClick = onPluginMarket) { Text("赛事与考证安排 · 前往插件市场") }
+        if (settings.weekdays.isEmpty()) Text("请选择至少一天", style = QztcTypography.meta, color = colors.warn)
+        listOf<Triple<String, Boolean, (Boolean) -> Unit>>(
+            Triple("课程表与日历活动", settings.includeActivities, { value: Boolean -> onChange(settings.copy(includeActivities = value)) }),
+            Triple("赛事与考证安排", settings.includeCompetitions || settings.includeExams, { value: Boolean -> onChange(settings.copy(includeCompetitions = value, includeExams = value)) }),
+            Triple("当天课程", settings.includeCourses, { value: Boolean -> onChange(settings.copy(includeCourses = value)) }),
+            Triple("没有安排时也通知", settings.notifyEmpty, { value: Boolean -> onChange(settings.copy(notifyEmpty = value)) }),
+        ).filter { it.first != "赛事与考证安排" || academicPluginInstalled }.forEach { (title, checked, change) ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = QztcTypography.body)
+                Switch(checked, change)
+            }
+        }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ReminderDisplayMode.entries.forEachIndexed { index, mode ->
+                SegmentedButton(settings.displayMode == mode, { onChange(settings.copy(displayMode = mode)) },
+                    shape = SegmentedButtonDefaults.itemShape(index, ReminderDisplayMode.entries.size),
+                    label = { Text(if (mode == ReminderDisplayMode.SCREEN_POPUP) "弹窗" else "通知栏") })
+            }
+        }
+        Text("通知最多展开 ${settings.maximumItems} 项", style = QztcTypography.meta)
+        Slider(settings.maximumItems.toFloat(), { onChange(settings.copy(maximumItems = it.toInt())) },
+            valueRange = 1f..30f, steps = 28)
+        Text("只汇总已加入的安排，取消后不再提醒。系统节电可能延迟通知。", style = QztcTypography.meta, color = colors.mut)
+        TextButton(onClick = onPreview, modifier = Modifier.testTag("daily-agenda-preview")) { Text("预览今日通知") }
+    }
+    if (choosingTime) {
+        cn.qztc.timetable.core.ui.theme.QztcTimePicker(java.time.LocalTime.of(settings.hour, settings.minute),
+            onDismiss = { choosingTime = false }) { time ->
+            onChange(settings.copy(hour = time.hour, minute = time.minute)); choosingTime = false
         }
     }
 }

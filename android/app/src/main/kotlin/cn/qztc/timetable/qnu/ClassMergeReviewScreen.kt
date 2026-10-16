@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -58,6 +59,7 @@ fun ClassMergeReviewScreen(
     val extraNames = remember(result) { mutableStateMapOf<String, String>() }
     val extraTeachers = remember(result) { mutableStateMapOf<String, String>() }
     val extraRooms = remember(result) { mutableStateMapOf<String, String>() }
+    val editingExtras = remember(result) { mutableStateMapOf<String, Boolean>() }
     val teachers = remember(result) {
         mutableStateMapOf<String, String>().apply {
             result.teacherConflicts.forEach { conflict ->
@@ -142,7 +144,17 @@ fun ClassMergeReviewScreen(
                                 onCheckedChange = { selected[extraKey] = it },
                             )
                             Text("加入个人课表", style = QztcTypography.meta, color = colors.mut)
+                            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { editingExtras[extraKey] = editingExtras[extraKey] != true }) {
+                                Text(if (editingExtras[extraKey] == true) "收起编辑" else "编辑")
+                            }
                         }
+                        if (editingExtras[extraKey] != true) {
+                            Text(extraNames[extraKey] ?: extra.course.name, style = QztcTypography.courseTitle, color = colors.ink)
+                            Text(listOf(extraTeachers[extraKey] ?: extra.meeting.teacher.orEmpty(),
+                                extraRooms[extraKey] ?: extra.meeting.room.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                                style = QztcTypography.meta, color = colors.mut)
+                        } else {
                         OutlinedTextField(
                             value = extraNames[extraKey] ?: extra.course.name,
                             onValueChange = { extraNames[extraKey] = it },
@@ -164,6 +176,7 @@ fun ClassMergeReviewScreen(
                             label = { Text("地点") },
                             singleLine = true,
                         )
+                        }
                         Text(
                             "周${extra.meeting.weekday} 第${extra.meeting.periodStart}-${extra.meeting.periodEnd}节",
                             style = QztcTypography.meta,

@@ -36,10 +36,14 @@ object QnuTimetableImporter {
         return map(page, semesterId)
     }
 
+    fun importChangesHtml(html: String, semesterId: String = ""): ImportedTimetable =
+        map(QnuTimetableParser.parseChangesHtml(html), semesterId)
+
     fun applyCourseProfiles(imported: ImportedTimetable, profiles: List<QnuCourseProfile>): ImportedTimetable {
         val courses = imported.state.courses.map { course ->
             val profile = QnuTimetableParser.matchCourseProfile(course.name, course.sequence, profiles, course.code)
             course.copy(
+                name = cn.qztc.timetable.core.domain.schedule.ScheduleCourseNames.fullest(course.name, profile?.courseName) ?: course.name,
                 nature = profile?.nature ?: course.nature,
                 credits = profile?.credits ?: course.credits,
                 selectionAttribute = profile?.selectionAttribute ?: course.selectionAttribute,
@@ -75,7 +79,9 @@ object QnuTimetableImporter {
         val state = TimetableState(
             courses = registry.referencedCourses(),
             meetings = MeetingMerger.mergeConsecutive(meetings),
-            exceptions = mergeAdjacentExceptions(exceptions.values.toList()),
+            exceptions = mergeAdjacentExceptions(exceptions.values.toList()).map { exception ->
+                exception.copy(courseName = registry.referencedCourses().firstOrNull { it.id == exception.courseId }?.name)
+            },
         )
 
         return ImportedTimetable(
@@ -349,7 +355,7 @@ object QnuTimetableImporter {
             val code = codeByKey[key] ?: profile?.courseCode
             val semesterPrefix = semesterId.takeIf(String::isNotBlank)?.let { "$it:" }.orEmpty()
             val id = "qnu:$semesterPrefix${code ?: name}#${sequence ?: "-"}"
-            courses.getOrPut(id) {
+            val course = courses.getOrPut(id) {
                 Course(
                     id = id,
                     semesterId = semesterId,
@@ -364,6 +370,8 @@ object QnuTimetableImporter {
                     assessmentMethod = profile?.assessmentMethod,
                 )
             }
+            val fullName = cn.qztc.timetable.core.domain.schedule.ScheduleCourseNames.fullest(course.name, name, profile?.courseName) ?: name
+            if (fullName != course.name) courses[id] = course.copy(name = fullName)
             return id
         }
 

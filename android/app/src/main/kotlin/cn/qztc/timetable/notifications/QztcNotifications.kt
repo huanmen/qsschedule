@@ -58,6 +58,14 @@ object QztcNotifications {
     }
 
     suspend fun testCourseReminder(context: Context, mode: ReminderDisplayMode): ReminderProbe {
+        return testReminder(context,mode) {notifyCourseReminder(context,"测试提醒",
+            if(mode==ReminderDisplayMode.SCREEN_POPUP)"请确认屏幕顶部是否出现弹窗。"else"这是一条通知栏测试提醒。",PREVIEW_ID,mode)}
+    }
+
+    suspend fun testActivityReminder(context:Context,mode:ReminderDisplayMode,title:String,detail:String):ReminderProbe =
+        testReminder(context,mode) {notifyActivityReminder(context,title,detail,java.time.LocalDate.now().toString(),PREVIEW_ID,mode)}
+
+    private suspend fun testReminder(context:Context,mode:ReminderDisplayMode,send:()->Boolean):ReminderProbe {
         ensureChannels(context)
         val manager = context.getSystemService(NotificationManager::class.java)
         val popup = mode == ReminderDisplayMode.SCREEN_POPUP
@@ -69,8 +77,7 @@ object QztcNotifications {
         val issue = reminderNotificationIssue(canPost(context), channel?.importance ?: 0, popup, groupBlocked, dndMayBlock)
         if (issue != null) return ReminderProbe(issue = issue)
         manager.cancel(PREVIEW_ID)
-        if (!notifyCourseReminder(context, "测试提醒",
-                if (popup) "请确认屏幕顶部是否出现弹窗。" else "这是一条通知栏测试提醒。", PREVIEW_ID, mode)) {
+        if (!send()) {
             return ReminderProbe(issue = "系统未允许发送提醒，请检查通知权限。")
         }
         repeat(5) {
@@ -86,12 +93,19 @@ object QztcNotifications {
         detail: String,
         notificationId: Int,
         displayMode: ReminderDisplayMode = ReminderDisplayMode.SCREEN_POPUP,
+        courseDate: String? = null,
     ): Boolean {
         ensureChannels(context)
         val popup = displayMode == ReminderDisplayMode.SCREEN_POPUP
         val channelId = if (popup) REMINDER_POPUP_CHANNEL else REMINDER_CHANNEL
         return post(context, notificationId,
-            builder(context, channelId)
+            builder(context, channelId, Intent(context, MainActivity::class.java).apply {
+                if (courseDate == null || courseDate == java.time.LocalDate.now().toString()) {
+                    action = MainActivity.EXTRA_OPEN_TODAY
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra(MainActivity.EXTRA_OPEN_TODAY, true)
+                }
+            })
                 .setContentTitle("即将上课：$title")
                 .setContentText(detail)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
@@ -100,6 +114,20 @@ object QztcNotifications {
                 .setDefaults(if (popup) NotificationCompat.DEFAULT_ALL else NotificationCompat.DEFAULT_SOUND)
                 .build(),
         )
+    }
+
+    fun notifyActivityReminder(context: Context, title: String, detail: String, date: String, notificationId: Int,
+        mode:ReminderDisplayMode=ReminderDisplayMode.NOTIFICATION_BAR): Boolean {
+        ensureChannels(context)
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.EXTRA_OPEN_CALENDAR)
+            .setData(android.net.Uri.parse("qztc://calendar/$date"))
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(MainActivity.EXTRA_OPEN_CALENDAR, date)
+        val popup=mode==ReminderDisplayMode.SCREEN_POPUP
+        return post(context, notificationId, builder(context, if(popup)REMINDER_POPUP_CHANNEL else REMINDER_CHANNEL, intent)
+            .setPriority(if(popup)NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setContentTitle(title).setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail)).build())
     }
 
     fun notifyScheduleChange(context: Context, count: Int, notificationId: Int) {
@@ -112,6 +140,43 @@ object QztcNotifications {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .build(),
         )
+    }
+
+    fun notifyDailyAgenda(context: Context, title: String, detail: String, mode: ReminderDisplayMode): Boolean {
+        ensureChannels(context)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val popup = mode == ReminderDisplayMode.SCREEN_POPUP
+        val channel = if (popup) "daily-agenda-popup" else "daily-agenda"
+        manager.createNotificationChannel(NotificationChannel(channel, if (popup) "每日待办（弹窗）" else "每日待办",
+            if (popup) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT))
+        return post(context, 73001, builder(context, channel)
+            .setContentTitle(title).setContentText(detail.lineSequence().firstOrNull())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(if (popup) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT).build())
+    }
+
+    fun notifyHomeworkReminder(context: Context, title: String, detail: String, notificationId: Int): Boolean {
+        val channel = "homework-reminders"
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(channel, "作业提醒", NotificationManager.IMPORTANCE_HIGH))
+        return post(context, notificationId, builder(context, channel, Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.EXTRA_OPEN_HOMEWORK)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(MainActivity.EXTRA_OPEN_HOMEWORK, true))
+            .setContentTitle(title).setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build())
+    }
+
+    fun notifyPlugin(context: Context, pluginId: String, name: String, title: String, detail: String, mode: ReminderDisplayMode): Boolean {
+        val popup = mode == ReminderDisplayMode.SCREEN_POPUP
+        val channel = "plugin:$pluginId:${if (popup) "popup" else "normal"}"
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(channel, "$name · 通知", if (popup) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT))
+        return post(context, "plugin:$pluginId:$title".hashCode(), builder(context, channel)
+            .setContentTitle(title).setContentText(detail.lineSequence().firstOrNull())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail)).build())
     }
 
     fun notifySchoolVpnRequired(context: Context, notificationId: Int) {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh public competition and exam reference metadata daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 Asia/Shanghai
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -25,4 +25,21 @@ class WeekContentReplacementTest {
         assertEquals(1, rendered.count { 2 in it.periodStart..it.periodEnd })
         assertEquals(listOf(old), replaceWeekCellContents(listOf(old)))
     }
+
+    @Test fun movedDifferentCourseReplacesDestinationContentOnlyOnItsDayAndPeriods() {
+        val old = occurrence("old", 7, 10)
+        val moved = occurrence("new", 7, 9).copy(moved = true, changed = true)
+        val anotherDay = old.copy(weekday = 4)
+        val rendered = replaceWeekCellContents(listOf(old, moved, anotherDay, moved))
+        assertEquals(listOf(10..10), rendered.filter { it.course.id == "old" && it.weekday == 3 }
+            .map { it.periodStart..it.periodEnd })
+        assertEquals(listOf(moved), rendered.filter { it.course.id == "new" })
+        assertTrue(rendered.contains(anotherDay))
+    }
+
+    @Test fun ordinaryLiveConflictsRemainVisibleAndSourceDataIsUnchanged() {
+        val ordinary = listOf(occurrence("first", 1, 2), occurrence("second", 1, 2))
+        assertEquals(ordinary, replaceWeekCellContents(ordinary))
+        assertEquals(1..2, ordinary.first().periodStart..ordinary.first().periodEnd)
+    }
 }

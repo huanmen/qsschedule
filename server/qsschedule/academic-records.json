@@ -1,0 +1,8 @@
+{
+  "id": "academic-records",
+  "version": 1,
+  "minAppVersion": 13,
+  "dataUrl": "https://huanmen.com.cn/qsschedule/downloads/qsschedule-academic-records-1.json",
+  "sha256": "b96d6c35fc0466e0cfa46a8e9ed1f8db7642649fbcf0f954c17c0da83c8c4553",
+  "bytes": 1992164
+}

@@ -202,6 +202,7 @@ data class ActivityEditDraft(
     val color: Int,
     val sessions: List<cn.qztc.timetable.core.domain.model.ActivitySession> = emptyList(),
     val restoreCoursesOnDelete: Boolean = true,
+    val memoTime: cn.qztc.timetable.core.domain.model.ActivityMemoTime? = null,
 )
 
 @Composable
@@ -212,10 +213,10 @@ fun TodayScreen(
     onSaveReminder: (String, Int?, String?) -> Unit = { _, _, _ -> },
     onSaveCourseEdit: (DemoOccurrence, CourseEditDraft) -> Unit = { _, _ -> },
     onDeleteCourse: (DemoOccurrence) -> Unit = {},
-    onSaveActivity: (ActivityEditDraft, removeMeetingIds: List<String>) -> Unit = { _, _ -> },
-    onDeleteActivity: (String, Boolean) -> Unit = { _, _ -> },
+    onOpenCalendar: (java.time.LocalDate) -> Unit = {},
     onCoverBottomBar: (Boolean) -> Unit = {},
     nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
+    active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalQztcColors.current
@@ -232,8 +233,6 @@ fun TodayScreen(
     var dateSheetOpen by remember { mutableStateOf(false) }
     var courseMenu by remember { mutableStateOf(CourseMenuState()) }
     var detailOccurrence by remember { mutableStateOf<DemoOccurrence?>(null) }
-    var detailActivity by remember { mutableStateOf<ScheduleActivity?>(null) }
-    var pendingActivitySave by remember { mutableStateOf<PendingActivitySave?>(null) }
     var pendingCourseSave by remember { mutableStateOf<PendingCourseSave?>(null) }
     var reminderOccurrence by remember { mutableStateOf<DemoOccurrence?>(null) }
     var navigationOccurrence by remember { mutableStateOf<DemoOccurrence?>(null) }
@@ -243,8 +242,8 @@ fun TodayScreen(
     val isToday = scheduleState.isCurrentDateInImportedSemester && viewedDay == todayDay
     val isReferenceDay = viewedDay == scheduleState.referenceWeekday
     var realNow by remember { mutableStateOf(nowProvider().toLocalTime()) }
-    LaunchedEffect(scheduleState.importedSchedule) {
-        if (scheduleState.importedSchedule == null) return@LaunchedEffect
+    LaunchedEffect(scheduleState.importedSchedule, active) {
+        if (!active || scheduleState.importedSchedule == null) return@LaunchedEffect
         while (true) {
             val current = nowProvider()
             val previousDate = clockDate
@@ -299,7 +298,7 @@ fun TodayScreen(
             .collect { courseMenu = courseMenu.dismiss() }
     }
 
-    detailOccurrence?.let { occurrence ->
+    detailOccurrence?.takeIf { active }?.let { occurrence ->
         BackHandler {
             if (pendingCourseSave != null) pendingCourseSave = null else detailOccurrence = null
         }
@@ -348,49 +347,7 @@ fun TodayScreen(
         return
     }
 
-    detailActivity?.let { activity ->
-        DisposableEffect(Unit) {
-            onCoverBottomBar(true)
-            onDispose { onCoverBottomBar(false) }
-        }
-        val totalWeeks = scheduleState.importedSchedule?.semester?.totalWeeks ?: 20
-        ActivityDetailPage(
-            activity = activity,
-            presetColors = coursePresetColors,
-            totalWeeks = totalWeeks,
-            fallbackWeekday = viewedDay,
-            fallbackDate = scheduleState.dateFor(week, viewedDay),
-            onBack = { detailActivity = null },
-            onSave = { draft ->
-                val hits = findActivityConflicts(draft, scheduleState)
-                onSaveActivity(draft, hits.map { it.meeting.id })
-                detailActivity = null
-            },
-            onDelete = {
-                onDeleteActivity(activity.id, it)
-                detailActivity = null
-            },
-        )
-        pendingActivitySave?.let { pending ->
-            ActivityConflictDialog(
-                hits = pending.hits,
-                onRemoveCourses = {
-                    onSaveActivity(pending.draft, pending.hits.map { it.meeting.id })
-                    pending.afterSave()
-                    pendingActivitySave = null
-                },
-                onKeepCourses = {
-                    onSaveActivity(pending.draft, emptyList())
-                    pending.afterSave()
-                    pendingActivitySave = null
-                },
-                onDismiss = { pendingActivitySave = null },
-            )
-        }
-        return
-    }
-
-    mapNavigationOccurrence?.let { occurrence ->
+    mapNavigationOccurrence?.takeIf { active }?.let { occurrence ->
         BackHandler { mapNavigationOccurrence = null }
         CampusRouteScreen(
             rawDestination = occurrence.room,
@@ -450,7 +407,7 @@ fun TodayScreen(
                         modifier = Modifier
                             .padding(horizontal = QztcSpacing.lg)
                             .fillMaxWidth()
-                            .clickable { detailActivity = activity }
+                            .clickable { onOpenCalendar(scheduleState.dateFor(week, viewedDay)) }
                             .pressable(),
                     ) {
                         Column(Modifier.padding(QztcSpacing.lg), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -490,7 +447,7 @@ fun TodayScreen(
         }
     }
 
-    if (dateSheetOpen) {
+    if (dateSheetOpen && active) {
         DateChoiceSheet(
             week = week,
             selectedDay = viewedDay,
@@ -1176,9 +1133,10 @@ internal fun CourseEditPage(
     var name by remember(editorKey) { mutableStateOf(initial.name) }
     var teacher by remember(editorKey) { mutableStateOf(initial.teacher) }
     var location by remember(editorKey) { mutableStateOf(initial.location) }
-    var weekday by remember(editorKey) { mutableStateOf(initial.weekday) }
+    val newCourse = initial.name.isBlank() && initial.weeklySlots.isEmpty()
+    var weekday by remember(editorKey) { mutableStateOf(if (newCourse) 0 else initial.weekday) }
     var weeklySlots by remember(editorKey) { mutableStateOf(
-        initial.weeklySlots.ifEmpty { listOf(WeeklySlotDraft(initial.weekday, initial.periodStart, initial.periodEnd, initialWeeks.sorted())) }
+        if (newCourse) emptyList() else initial.weeklySlots.ifEmpty { listOf(WeeklySlotDraft(initial.weekday, initial.periodStart, initial.periodEnd, initialWeeks.sorted())) }
     ) }
     var selectedWeeks by remember(editorKey, totalWeeks) { mutableStateOf(
         weeklySlots.filter { it.weekday == weekday }.flatMap { it.weeks.ifEmpty { initialWeeks.sorted() } }.toSet()
@@ -1205,7 +1163,7 @@ internal fun CourseEditPage(
         weeklySlots = weeklySlots.map { if (it.weekday == weekday) it.copy(weeks = next.sorted()) else it }
     }
     val canSave = name.isNotBlank() && weeklySlots.isNotEmpty() && weeklySlots.all { it.weeks.isNotEmpty() }
-    val conflicts = conflictsFor(currentDraft())
+    val conflicts = if (weeklySlots.isEmpty()) emptyList() else conflictsFor(currentDraft())
     var confirmCoverage by remember(editorKey) { mutableStateOf(false) }
     fun save() {
         if (!canSave) return
@@ -1296,7 +1254,7 @@ internal fun CourseEditPage(
                     }
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    FormLabel("周${listOf("一", "二", "三", "四", "五", "六", "日")[weekday - 1]}上课周数", modifier = Modifier.weight(1f))
+                    FormLabel(if (weekday in 1..7) "周${listOf("一", "二", "三", "四", "五", "六", "日")[weekday - 1]}上课周数" else "上课周数", modifier = Modifier.weight(1f))
                     WeekSelectionShortcuts(totalWeeks = totalWeeks, selectedWeeks = selectedWeeks, onChange = ::changeWeeks)
                 }
                 (1..totalWeeks.coerceAtLeast(1)).toList().chunked(6).forEach { rowWeeks ->
@@ -1421,7 +1379,7 @@ internal fun WeekPeriodPicker(
                     .background(if (selected) colors.accentSoft else colors.solid)
                     .border(1.dp, if (selected) colors.accent else colors.line, RoundedCornerShape(6.dp))
                     .testTag("course-period-${index + 1}")
-                    .clickable { onSlot(index) }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    .clickable(enabled = weekday in 1..7) { onSlot(index) }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
                     Text(number.toString(), style = QztcTypography.body,
                         color = if (selected) colors.accentDeep else colors.ink)
                 }

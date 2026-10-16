@@ -5,39 +5,73 @@ import cn.qztc.timetable.core.domain.calendar.AcademicDay
 import cn.qztc.timetable.core.domain.calendar.AcademicDayKind
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDate
 import org.json.JSONObject
 
+/** Published leave and makeup dates; an unpublished year is never guessed. */
 internal object OfficialHolidayApi {
-    private const val ENDPOINT = "https://web.huanmen.com.cn/qztc/ditu/api/calendar/holidays"
+    private val sources = listOf(
+        "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/%d.json",
+        "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json",
+    )
     fun load(context: Context, years: List<Int>, semesterId: String): List<AcademicDay> =
-        years.flatMap { year -> runCatching { loadYear(context, year, semesterId) }.getOrDefault(emptyList()) }
+        years.distinct().flatMap { year -> loadYear(context, year, semesterId) }
 
+    internal fun parse(body: String, year: Int, semesterId: String): List<AcademicDay> {
+        require(body.length <= 200_000)
+        val root = JSONObject(body)
+        val published = root.has("year")
+        if (published) require(root.getInt("year") == year)
+        val array = root.getJSONArray("days")
+        require(array.length() in 1..100)
+        return (0 until array.length()).map { i ->
+            val item = array.getJSONObject(i)
+            val date = LocalDate.parse(item.getString("date"))
+            require(date.year == year)
+            val makeup = if (published) !item.getBoolean("isOffDay") else {
+                require(item.getString("kind") in setOf("MAKEUP", "HOLIDAY"))
+                item.getString("kind") == "MAKEUP"
+            }
+            AcademicDay("official:$year:$date", semesterId, date,
+                if (makeup) AcademicDayKind.MAKEUP else AcademicDayKind.HOLIDAY,
+                item.getString("name").also { require(it.isNotBlank() && it.length <= 50) },
+                useCurrentWeek = makeup)
+        }.also { require(it.map { day -> day.date }.distinct().size == it.size) }
+    }
     fun cached(context: Context, year: Int, semesterId: String): List<AcademicDay> = runCatching {
-        val body=context.getSharedPreferences("official-holidays",Context.MODE_PRIVATE).getString("year:$year",null)
-        if(body==null) return@runCatching emptyList()
-        val array=JSONObject(body).getJSONArray("days")
-        (0 until array.length()).map { i -> val d=array.getJSONObject(i);val date=java.time.LocalDate.parse(d.getString("date"))
-            AcademicDay("official:$year:$date",semesterId,date,if(d.getString("kind")=="MAKEUP")AcademicDayKind.MAKEUP else AcademicDayKind.HOLIDAY,d.optString("name")) }
+        val body = context.getSharedPreferences("official-holidays", Context.MODE_PRIVATE)
+            .getString("year:$year", null) ?: return@runCatching emptyList()
+        parse(body, year, semesterId)
     }.getOrDefault(emptyList())
 
-    private fun loadYear(context: Context, year: Int, semesterId: String): List<AcademicDay> = try {
-        val cache = context.getSharedPreferences("official-holidays", Context.MODE_PRIVATE)
-        val connection = URL("$ENDPOINT?year=$year").openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 8_000; connection.readTimeout = 8_000
-            connection.useCaches = false
-            connection.setRequestProperty("Cache-Control", "no-cache")
-            val body = if (connection.responseCode in 200..299) {
-                connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }.also { cache.edit().putString("year:$year", it).apply() }
-            } else throw IllegalStateException("年度节假日暂不可用（$year）")
-            val root = JSONObject(body)
-            root.getJSONArray("days").let { array -> (0 until array.length()).map { index ->
-                val item=array.getJSONObject(index)
-                AcademicDay("official:$year:${item.getString("date")}",semesterId,java.time.LocalDate.parse(item.getString("date")),
-                    if(item.getString("kind")=="MAKEUP") AcademicDayKind.MAKEUP else AcademicDayKind.HOLIDAY,item.optString("name"),useCurrentWeek=item.getString("kind")=="MAKEUP")
-            } }
-        } finally { connection.disconnect() }
-    } catch (error: Exception) {
-        throw error
+    private fun loadYear(context: Context, year: Int, semesterId: String): List<AcademicDay> {
+        require(year in 2000..2100)
+        for (source in sources) {
+            val days = runCatching {
+                val connection = URL(source.format(year)).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 8_000; connection.readTimeout = 8_000
+                    connection.useCaches = false
+                    require(connection.responseCode in 200..299)
+                    val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                        val chars = CharArray(200_001)
+                        var size = 0
+                        while (size < chars.size) {
+                            val count = reader.read(chars, size, chars.size - size)
+                            if (count < 0) break
+                            size += count
+                        }
+                        require(size <= 200_000)
+                        String(chars, 0, size)
+                    }
+                    val parsed = parse(body, year, semesterId)
+                    context.getSharedPreferences("official-holidays", Context.MODE_PRIVATE).edit()
+                        .putString("year:$year", body).putLong("fetched:$year", System.currentTimeMillis()).apply()
+                    parsed
+                } finally { connection.disconnect() }
+            }.getOrNull()
+            if (days != null) return days
+        }
+        return cached(context, year, semesterId)
     }
 }

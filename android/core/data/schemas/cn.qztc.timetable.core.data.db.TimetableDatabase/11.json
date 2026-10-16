@@ -1,0 +1,907 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 11,
+    "identityHash": "f2f10af9df79aff4051b7a02687bbaf1",
+    "entities": [
+      {
+        "tableName": "semesters",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `schoolYear` INTEGER NOT NULL, `term` TEXT NOT NULL, `startDate` TEXT NOT NULL, `totalWeeks` INTEGER NOT NULL, `archived` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schoolYear",
+            "columnName": "schoolYear",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "term",
+            "columnName": "term",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "startDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalWeeks",
+            "columnName": "totalWeeks",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archived",
+            "columnName": "archived",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "courses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `sourceType` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, `code` TEXT, `name` TEXT NOT NULL, `sequence` TEXT, `color` INTEGER, `note` TEXT, `nature` TEXT, `credits` TEXT, `selectionAttribute` TEXT, `assessmentMethod` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "sourceKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nature",
+            "columnName": "nature",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "credits",
+            "columnName": "credits",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "selectionAttribute",
+            "columnName": "selectionAttribute",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "assessmentMethod",
+            "columnName": "assessmentMethod",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_courses_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_courses_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "meetings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `courseId` TEXT NOT NULL, `weekday` INTEGER NOT NULL, `periodStart` INTEGER NOT NULL, `periodEnd` INTEGER NOT NULL, `weeksCsv` TEXT NOT NULL, `weekRaw` TEXT NOT NULL, `teacher` TEXT, `room` TEXT, `sourceType` TEXT NOT NULL, `overrideMaskCsv` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseId",
+            "columnName": "courseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weekday",
+            "columnName": "weekday",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "periodStart",
+            "columnName": "periodStart",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "periodEnd",
+            "columnName": "periodEnd",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weeksCsv",
+            "columnName": "weeksCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weekRaw",
+            "columnName": "weekRaw",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "teacher",
+            "columnName": "teacher",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "room",
+            "columnName": "room",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overrideMaskCsv",
+            "columnName": "overrideMaskCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_meetings_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_meetings_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_meetings_courseId",
+            "unique": false,
+            "columnNames": [
+              "courseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_meetings_courseId` ON `${TABLE_NAME}` (`courseId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "schedule_exceptions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `courseId` TEXT NOT NULL, `type` TEXT NOT NULL, `originalJson` TEXT, `replacementJson` TEXT, `substituteTeacher` TEXT, `note` TEXT, `sourceType` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseId",
+            "columnName": "courseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalJson",
+            "columnName": "originalJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "replacementJson",
+            "columnName": "replacementJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "substituteTeacher",
+            "columnName": "substituteTeacher",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_schedule_exceptions_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_schedule_exceptions_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_schedule_exceptions_courseId",
+            "unique": false,
+            "columnNames": [
+              "courseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_schedule_exceptions_courseId` ON `${TABLE_NAME}` (`courseId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "period_schemes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`semesterId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `editable` INTEGER NOT NULL, `periodsJson` TEXT NOT NULL, PRIMARY KEY(`semesterId`))",
+        "fields": [
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "editable",
+            "columnName": "editable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "periodsJson",
+            "columnName": "periodsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "semesterId"
+          ]
+        }
+      },
+      {
+        "tableName": "sync_runs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `source` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `finishedAt` INTEGER, `status` TEXT NOT NULL, `errorMessage` TEXT, `changeSetId` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "changeSetId",
+            "columnName": "changeSetId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sync_runs_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_runs_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "change_sets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `syncRunId` TEXT, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `resolvedAt` INTEGER, `diffJson` TEXT NOT NULL, `snapshotJson` TEXT NOT NULL, `addedCount` INTEGER NOT NULL, `changedCount` INTEGER NOT NULL, `removedCount` INTEGER NOT NULL, `conflictCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncRunId",
+            "columnName": "syncRunId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resolvedAt",
+            "columnName": "resolvedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "diffJson",
+            "columnName": "diffJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snapshotJson",
+            "columnName": "snapshotJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedCount",
+            "columnName": "addedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changedCount",
+            "columnName": "changedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "removedCount",
+            "columnName": "removedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conflictCount",
+            "columnName": "conflictCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_change_sets_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_change_sets_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_change_sets_semesterId_createdAt",
+            "unique": false,
+            "columnNames": [
+              "semesterId",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_change_sets_semesterId_createdAt` ON `${TABLE_NAME}` (`semesterId`, `createdAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "activities",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `name` TEXT NOT NULL, `note` TEXT NOT NULL, `timeText` TEXT NOT NULL, `kind` TEXT NOT NULL, `color` INTEGER, `weekday` INTEGER, `periodStart` INTEGER, `periodEnd` INTEGER, `weeksCsv` TEXT NOT NULL, `startDate` TEXT, `endDate` TEXT, `sessionsJson` TEXT NOT NULL DEFAULT '[]', `hiddenFromSchedule` INTEGER NOT NULL DEFAULT 0, `calendarTimetable` INTEGER NOT NULL DEFAULT 1, `memoTimeJson` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeText",
+            "columnName": "timeText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "weekday",
+            "columnName": "weekday",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "periodStart",
+            "columnName": "periodStart",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "periodEnd",
+            "columnName": "periodEnd",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "weeksCsv",
+            "columnName": "weeksCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "startDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "endDate",
+            "columnName": "endDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sessionsJson",
+            "columnName": "sessionsJson",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'[]'"
+          },
+          {
+            "fieldPath": "hiddenFromSchedule",
+            "columnName": "hiddenFromSchedule",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "calendarTimetable",
+            "columnName": "calendarTimetable",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "memoTimeJson",
+            "columnName": "memoTimeJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activities_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activities_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "academic_days",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `date` TEXT NOT NULL, `kind` TEXT NOT NULL, `name` TEXT NOT NULL, `sourceWeek` INTEGER, `sourceWeekday` INTEGER, `useCurrentWeek` INTEGER NOT NULL, `useCurrentWeekday` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceWeek",
+            "columnName": "sourceWeek",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceWeekday",
+            "columnName": "sourceWeekday",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "useCurrentWeek",
+            "columnName": "useCurrentWeek",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "useCurrentWeekday",
+            "columnName": "useCurrentWeekday",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_academic_days_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_academic_days_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_academic_days_semesterId_date",
+            "unique": true,
+            "columnNames": [
+              "semesterId",
+              "date"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_academic_days_semesterId_date` ON `${TABLE_NAME}` (`semesterId`, `date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "user_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `homeView` TEXT NOT NULL, `activeSemesterId` TEXT, `syncEnabled` INTEGER NOT NULL, `syncIntervalHours` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeView",
+            "columnName": "homeView",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activeSemesterId",
+            "columnName": "activeSemesterId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncEnabled",
+            "columnName": "syncEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncIntervalHours",
+            "columnName": "syncIntervalHours",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "activity_suppressions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `activityId` TEXT, `occurrenceKey` TEXT NOT NULL, `coverageVersion` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "occurrenceKey",
+            "columnName": "occurrenceKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coverageVersion",
+            "columnName": "coverageVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activity_suppressions_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_suppressions_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_activity_suppressions_activityId",
+            "unique": false,
+            "columnNames": [
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_suppressions_activityId` ON `${TABLE_NAME}` (`activityId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "schedule_place_bindings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerId` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `locationJson` TEXT NOT NULL, PRIMARY KEY(`ownerId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerId",
+            "columnName": "ownerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationJson",
+            "columnName": "locationJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_schedule_place_bindings_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_schedule_place_bindings_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f2f10af9df79aff4051b7a02687bbaf1')"
+    ]
+  }
+}

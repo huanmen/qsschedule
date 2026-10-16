@@ -80,3 +80,26 @@ data class QnuCourseProfile(
     val selectionAttribute: String? = null,
     val assessmentMethod: String? = null,
 )
+
+data class QnuGradeRecord(
+    val courseCode: String?,
+    val courseName: String,
+    val score: String?,
+    val gpa: String?,
+    val credits: String?,
+    val assessment: String?,
+    val selection: String?,
+    val status: String?,
+    val year: String? = null,
+    val term: String? = null,
+    val examType: String? = null,
+    val courseSequence: String? = null,
+    val officialFields: Map<String, String> = emptyMap(),
+)
+
+data class QnuEvaluationTask(
+    val teacher: String,
+    val course: String,
+    val state: String?,
+    val actionPath: String?,
+)

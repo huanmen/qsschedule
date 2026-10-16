@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>泉师课程表 · 个人与学业</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="academic-overrides.css">
+  <link rel="stylesheet" href="calendar-cards.css">
+  <script defer src="lucide.min.js"></script>
+  <script defer src="elective-planner.js"></script>
+  <script defer src="competition-data.js"></script>
+  <script defer src="competition-profiles.js"></script>
+  <script defer src="competition-editions.js"></script>
+  <script defer src="jingsai-catalog.js"></script>
+  <script defer src="record-portals.js"></script>
+  <script defer src="portal.js"></script>
+  <script defer src="interaction-updates.js"></script>
+  <script defer src="competition-detail.js"></script>
+  <script defer src="exam-notice-cache.js"></script>
+  <script defer src="homework-preview.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="exam-catalog.js"></script>
+  <script defer src="calendar-view.js"></script>
+  <script defer src="record-details.js"></script>
+  <script defer src="community-feed.js"></script>
+  <script defer src="community-schedules.js"></script>
+  <script defer src="schedule-presentation.js"></script>
+  <script defer src="audited-record-data.js"></script>
+  <script defer src="audited-record-details.js"></script>
+  <script defer src="mobile-runtime.js"></script>
+  <script defer src="date-time-picker.js"></script>
+</head>
+<body>
+  <aside class="preview-controls">
+    <div class="identity"><img src="../../android/app/src/main/res/drawable/qnu_logo_generated.png" alt="泉师课程表"><span>泉师课程表<small>页面预览 · 2026.10</small></span></div>
+    <nav aria-label="预览页面"><button data-page="personal" class="active"><i data-lucide="user-round"></i>个人</button><button data-page="credits"><i data-lucide="graduation-cap"></i>学分</button><button data-page="competitions"><i data-lucide="trophy"></i>赛事</button><button data-page="calendar"><i data-lucide="calendar-days"></i>日历</button></nav>
+    <label class="theme-label" for="theme">主题配色</label><select id="theme"><option value="green">森林青苔</option><option value="soda">海盐汽水</option><option value="lime">青柠晴空</option></select>
+    <label class="theme-label" for="credit-example">选修课示例</label><select id="credit-example"><option value="done">已达标</option><option value="none">尚未修读</option><option value="partial">已有 4 分 · 艺术未修</option><option value="art">已有 6 分 · 艺术未修</option><option value="limit">已有 8 分 · 艺术未修</option></select>
+    <p class="preview-note">学分、成绩及个人资料为合成示例。赛事目录来自学校文件；报名时间以各届正式公告为准。</p>
+  </aside>
+  <div class="app" data-theme="green">
+    <header class="topbar"><button id="back" class="icon-button" aria-label="返回" title="返回"><i data-lucide="arrow-left"></i></button><h1 id="page-title">学习情况</h1><span id="scope-label">学分</span><button id="refresh" class="icon-button" aria-label="刷新" title="刷新"><i data-lucide="refresh-cw"></i></button></header>
+    <main id="content"></main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="sheet-backdrop" hidden></div>
+    <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="grip"></div><div class="sheet-head"><h2 id="sheet-title"></h2><button class="icon-button" id="close-sheet" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div><div id="sheet-content" tabindex="0"></div></div>
+    <nav class="bottom-nav" aria-label="主导航"><button data-go="calendar"><i data-lucide="calendar-days"></i><span>日历</span></button><button data-go="personal"><i data-lucide="user-round"></i><span>我的</span></button></nav>
+  </div>
+</body>
+</html>

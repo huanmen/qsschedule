@@ -15,7 +15,8 @@ object UpcomingScheduleChanges {
         }
         return exception.type in setOf(ExceptionType.CANCEL, ExceptionType.MOVE) && (relevant(exception.original) || relevant(exception.replacement))
     }
-    fun merge(semester: Semester, current: TimetableState, incoming: TimetableState, periods: List<Period>, now: LocalDateTime): TimetableState {
+    fun merge(semester: Semester, current: TimetableState, incoming: TimetableState, periods: List<Period>, now: LocalDateTime,
+        includeExpired: Boolean = false): TimetableState {
         fun relevant(slot: SlotRef?): Boolean {
             if(slot==null)return false
             val date=SemesterCalendar.dateOf(semester,slot.week,slot.weekday)
@@ -23,13 +24,14 @@ object UpcomingScheduleChanges {
             return date.atTime(end).isAfter(now)
         }
         fun upcoming(e: ScheduleException) = e.type in setOf(ExceptionType.CANCEL,ExceptionType.MOVE) && (relevant(e.original)||relevant(e.replacement))
-        val updates=incoming.exceptions.filter(::upcoming).mapNotNull { exception ->
+        val updates=incoming.exceptions.filter { if (includeExpired) it.type in setOf(ExceptionType.CANCEL, ExceptionType.MOVE) else upcoming(it) }.mapNotNull { exception ->
             val course=incoming.courses.firstOrNull { it.id==exception.courseId } ?: return@mapNotNull null
             val matches=current.courses.filter { it.sourceType==SourceType.QNU_EDU &&
                 ((course.code!=null && it.code==course.code && it.sequence==course.sequence) || (it.name==course.name && it.sequence==course.sequence)) }
             val target=matches.singleOrNull() ?: return@mapNotNull null
             val anchor=exception.original ?: exception.replacement ?: return@mapNotNull null
-            exception.copy(courseId=target.id,id=ScheduleException.stableId(exception.type,target.id,anchor))
+            exception.copy(courseId=target.id,id=ScheduleException.stableId(exception.type,target.id,anchor),
+                courseName=ScheduleCourseNames.fullest(exception.courseName, course.name, target.name))
         }
         // Missing details may be a partial school response: retain existing
         // exceptions unless the same stable occurrence has an explicit update.

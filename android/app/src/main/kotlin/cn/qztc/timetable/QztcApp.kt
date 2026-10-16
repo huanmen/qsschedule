@@ -1,4 +1,7 @@
 package cn.qztc.timetable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.clearAndSetSemantics
 
 import android.app.ActivityManager
 import android.Manifest
@@ -40,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ViewWeek
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Schedule
@@ -52,6 +56,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,8 +70,13 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
@@ -122,8 +133,11 @@ import cn.qztc.timetable.feature.settings.PersonalizationScreen
 import cn.qztc.timetable.feature.settings.SemesterScheduleSettingsScreen
 import cn.qztc.timetable.feature.settings.PrivacyAboutScreen
 import cn.qztc.timetable.feature.timetable.DemoScheduleState
+import cn.qztc.timetable.feature.settings.toCalendarActivity
 import cn.qztc.timetable.feature.timetable.CourseEditDraft
 import cn.qztc.timetable.feature.timetable.ActivityEditDraft
+import cn.qztc.timetable.feature.timetable.toEditDraft
+import cn.qztc.timetable.feature.timetable.toScheduleActivity
 import cn.qztc.timetable.feature.timetable.DemoOccurrence
 import cn.qztc.timetable.feature.timetable.ImportedSchedule
 import cn.qztc.timetable.feature.timetable.TodayScreen
@@ -134,6 +148,8 @@ import cn.qztc.timetable.feature.timetable.CampusAliasSettingsScreen
 import cn.qztc.timetable.feature.timetable.CampusRouteScreen
 import cn.qztc.timetable.qnu.QnuCredentialStore
 import cn.qztc.timetable.qnu.QnuImportScreen
+import cn.qztc.timetable.education.StudyScreen
+import cn.qztc.timetable.education.AcademicPortalScreen
 import cn.qztc.timetable.qnu.QnuSemesterFactory
 import cn.qztc.timetable.reminder.CourseReminderScheduler
 import cn.qztc.timetable.widget.TodayWidgetProvider
@@ -144,6 +160,9 @@ import cn.qztc.timetable.snapshot.SnapshotStore
 import cn.qztc.timetable.sync.QnuSyncScheduler
 import cn.qztc.timetable.sync.UpcomingChangesDialog
 import cn.qztc.timetable.update.AppUpdateClient
+import cn.qztc.timetable.announcement.AnnouncementStore
+import cn.qztc.timetable.announcement.AnnouncementScreen
+import cn.qztc.timetable.announcement.ImportantAnnouncementDialog
 import cn.qztc.timetable.update.AppUpdateDialog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -155,7 +174,8 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
 
-private data class ReminderPermissionAction(val minutes: Int? = null)
+private data class ReminderPermissionAction(val minutes: Int? = null,
+    val dailyAgenda: cn.qztc.timetable.core.domain.model.DailyAgendaSettings? = null)
 
 private sealed interface AppUpdateState {
     data object Checking : AppUpdateState
@@ -169,22 +189,35 @@ private sealed interface AppUpdateState {
 /** 一级目的地。启动首页可配置为今日/周课表/记住上次（T2），“我的”不可为首页。 */
 enum class TopDestination(val label: String, val icon: ImageVector) {
     Today("今日", Icons.Outlined.Schedule),
-    Week("周课表", Icons.Outlined.CalendarMonth),
+    Week("周课表", Icons.Outlined.ViewWeek),
+    Calendar("日历", Icons.Outlined.CalendarMonth),
     Mine("我的", Icons.Outlined.Person),
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun QztcApp(openTodayOnStart: Boolean = false) {
+fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = false, openCalendarOnStart: String? = null,openAdSkipOnStart:Boolean=false,
+    launchRequestId: Int = 0, onReadyToDraw: () -> Unit = {}) {
     val context = LocalContext.current
+    val academicPluginInstalled = cn.qztc.timetable.plugin.rememberAcademicRecordsInstalled()
     val preferencesStore = remember { AppPreferencesStore(context.qztcDataStore) }
     val credentialStore = remember(context) { QnuCredentialStore(context) }
     val timetableDatabase = remember(context) { TimetableDatabase.build(context) }
     val timetableRepository = remember(timetableDatabase) { TimetableRepository(timetableDatabase) }
-    val loadedPreferences by preferencesStore.preferences.collectAsStateWithLifecycle(
-        initialValue = null,
-    )
-    val preferences = loadedPreferences ?: AppPreferences()
+    var calendarMemos by remember { mutableStateOf<List<ScheduleActivity>>(emptyList()) }
+    var calendarMemosLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(timetableRepository) {
+        calendarMemos = timetableRepository.activities("calendar")
+        calendarMemosLoaded = true
+    }
+    LaunchedEffect(calendarMemos, calendarMemosLoaded) {
+        if (calendarMemosLoaded) cn.qztc.timetable.reminder.ActivityReminderScheduler.update(context, calendarMemos)
+    }
+    val renderResources = remember(context) { (context.applicationContext as QztcApplication).renderResources }
+    val preparedAppearance by renderResources.appearance.collectAsStateWithLifecycle()
+    val loadedPreferences = preparedAppearance?.preferences
+    // Do not compose a default theme, dock or wallpaper before the persisted appearance.
+    val preferences = loadedPreferences ?: return
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (preferences.themeMode) {
         QztcThemeMode.SYSTEM -> systemDark
@@ -201,6 +234,14 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         glassSettings = preferences.glassSettings(Build.VERSION.SDK_INT, lowMemory),
     ) {
         val colors = LocalQztcColors.current
+        LaunchedEffect(preferences.themeMode, preferences.palette, darkTheme) {
+            (context as? android.app.Activity)?.let { activity ->
+                activity.window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
+                    colors.appBg.toArgb()))
+                if (Build.VERSION.SDK_INT >= 31) activity.splashScreen.setSplashScreenTheme(
+                    appLaunchTheme(preferences.themeMode, preferences.palette))
+            }
+        }
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
         val courseReminderState = CourseReminderUiState(
@@ -209,14 +250,47 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             displayMode = preferences.reminderDisplayMode,
             overrides = preferences.courseReminderOverrides,
             messages = preferences.courseReminderMessages,
+            remindOnHolidays = preferences.remindOnHolidays,
         )
         val saveReminder: (String, Int?, String?) -> Unit = { courseId, minutes, message ->
             scope.launch { preferencesStore.setCourseReminder(courseId, minutes, message) }
         }
         val demoScheduleState = remember { DemoScheduleState() }
-        var current by remember { mutableStateOf<TopDestination?>(null) }
+        var current by rememberSaveable { mutableStateOf<TopDestination?>(null) }
+        var localScheduleLoaded by remember { mutableStateOf(false) }
+        var calendarContentReady by remember { mutableStateOf(false) }
+        var firstFrameReported by remember { mutableStateOf(false) }
+        var calendarVisited by remember { mutableStateOf(false) }
+        val retainedTimetablePages = remember { androidx.compose.runtime.mutableStateListOf<TopDestination>() }
+        // Prepare the local calendar after the first frame, outside the navigation tap.
+        LaunchedEffect(loadedPreferences != null) {
+            if (loadedPreferences != null) {
+                withFrameNanos { }
+                withFrameNanos { }
+                calendarVisited = true
+            }
+        }
         var transientParentDestination by rememberSaveable { mutableStateOf<TopDestination?>(null) }
         var suspendVisualEffects by remember { mutableStateOf(false) }
+        var scrollingVisualEffects by remember { mutableStateOf(false) }
+        val lastVisualScrollAt = remember { longArrayOf(0L) }
+        val visualScrollObserver = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (available != Offset.Zero) {
+                        lastVisualScrollAt[0] = android.os.SystemClock.uptimeMillis()
+                        scrollingVisualEffects = true
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
+        LaunchedEffect(scrollingVisualEffects) {
+            if (scrollingVisualEffects) {
+                do { delay(180) } while (android.os.SystemClock.uptimeMillis() - lastVisualScrollAt[0] < 180)
+                scrollingVisualEffects = false
+            }
+        }
         var visualTransitionToken by remember { mutableIntStateOf(0) }
         var weekResetRequest by rememberSaveable { mutableIntStateOf(0) }
         val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
@@ -225,8 +299,25 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         var savedSettingsItemIndex by rememberSaveable { mutableIntStateOf(0) }
         var savedSettingsItemOffset by rememberSaveable { mutableIntStateOf(0) }
         var secondaryPage by rememberSaveable { mutableStateOf(SecondaryPage.NONE) }
+        var studyInitialTab by rememberSaveable { mutableIntStateOf(0) }
+        val pageStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+        var secondaryParents by rememberSaveable { mutableStateOf(emptyList<String>()) }
+        val announcementStore = remember(context) { AnnouncementStore(context) }
+        val announcementRevision by announcementStore.revision.collectAsStateWithLifecycle()
+        val announcementItems = remember(announcementRevision) { announcementStore.items() }
+        val importantAnnouncement = remember(announcementRevision) { announcementStore.important() }
+        LaunchedEffect(announcementStore) { announcementStore.refresh() }
+        if (importantAnnouncement != null && secondaryPage == SecondaryPage.NONE && current != null) {
+            ImportantAnnouncementDialog(importantAnnouncement,
+                onDismiss = { announcementStore.dismiss(importantAnnouncement) },
+                onOpen = { announcementStore.dismiss(importantAnnouncement); secondaryPage = SecondaryPage.ANNOUNCEMENTS })
+        }
         var upcomingChangesDialog by rememberSaveable { mutableStateOf(false) }
+        var upcomingChangesAlreadyChecked by rememberSaveable { mutableStateOf(false) }
         var importReturnPage by rememberSaveable { mutableStateOf(ImportReturnPage.NONE) }
+        var importCampusDialog by remember { mutableStateOf(false) }
+        var homeworkCampusDialog by remember { mutableStateOf(false) }
+        var importCampusChecked by remember { mutableStateOf(false) }
         var credentialRevision by rememberSaveable { mutableIntStateOf(0) }
         var cropImagePath by rememberSaveable { mutableStateOf<String?>(null) }
         var importedSemesters by remember { mutableStateOf<List<Semester>>(emptyList()) }
@@ -239,9 +330,19 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         var importedBackgrounds by remember { mutableStateOf<List<ImportedBackground>>(emptyList()) }
         var dayDetailWeek by rememberSaveable { mutableIntStateOf(1) }
         var dayDetailDay by rememberSaveable { mutableIntStateOf(1) }
+        var calendarOpenDate by remember { mutableStateOf<String?>(null) }
         var coverBottomBar by remember { mutableStateOf(false) }
         val imeVisible = WindowInsets.isImeVisible
         val savedCredentials = remember(credentialStore, credentialRevision) { credentialStore.load() }
+        var homeworkLaunchHandled by remember(launchRequestId) { mutableStateOf(false) }
+        var todayLaunchHandled by remember(launchRequestId) { mutableStateOf(false) }
+        var calendarLaunchHandled by remember(launchRequestId) { mutableStateOf(false) }
+        LaunchedEffect(launchRequestId, openHomeworkOnStart, current) {
+            if (openHomeworkOnStart && current != null && !homeworkLaunchHandled) {
+                homeworkLaunchHandled = true
+                current = TopDestination.Mine; secondaryPage = SecondaryPage.HOMEWORK
+            }
+        }
         val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
         val snapshotStore = remember(context) { SnapshotStore(context) }
         val exportStore = remember(context) { ScheduleExportStore(context) }
@@ -264,7 +365,9 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             pendingReminderAction = null
             scope.launch {
                 if (action != null) {
-                    if (granted) {
+                    if (action.dailyAgenda != null) {
+                        preferencesStore.setDailyAgenda(action.dailyAgenda.copy(enabled = granted))
+                    } else if (granted) {
                         action.minutes?.let { preferencesStore.setReminderMinutes(it) }
                         preferencesStore.setRemindersEnabled(true)
                     } else {
@@ -393,6 +496,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         }
 
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            scope.launch { announcementStore.refresh() }
             notificationAllowed = QztcNotifications.canPost(context)
             if (retestReminderOnResume) {
                 retestReminderOnResume = false
@@ -414,6 +518,11 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             val semester = checkNotNull(timetableRepository.semester(semesterId))
             val periodScheme = timetableRepository.periodScheme(semester.id)
                 ?: PeriodSchemeFactory.forSemester(semester.id)
+            val savedDays = timetableRepository.academicDays(semester.id)
+            val savedActivities = timetableRepository.activities(semester.id, includeHidden = true)
+            val defaults = cn.qztc.timetable.feature.settings.CalendarScheduleDefaults.cached(context, semester, savedDays, savedActivities)
+            if (defaults.days.isNotEmpty() || defaults.removedDayIds.isNotEmpty()) timetableRepository.replaceAcademicDays(semester.id, savedDays.filterNot { saved -> saved.id in defaults.removedDayIds || defaults.days.any { it.date == saved.date } } + defaults.days)
+            defaults.activities.forEach { timetableRepository.upsertActivity(it) }
             val imported = timetableRepository.importedSchedule(semester)
             // Keep settings and the loaded timetable on the same semester list.
             // The list used to be refreshed only during startup/import, so a
@@ -426,6 +535,13 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             activePeriodScheme = periodScheme
             refreshSyncState(semester.id)
             TodayWidgetProvider.requestUpdate(context)
+        }
+
+        LaunchedEffect(activeSemesterId) {
+            val id = activeSemesterId ?: return@LaunchedEffect
+            val semester = timetableRepository.semester(id) ?: return@LaunchedEffect
+            cn.qztc.timetable.feature.settings.CalendarScheduleDefaults.refreshPublicCache(context, semester)
+            if (activeSemesterId == id) refreshSchedule(id)
         }
 
         suspend fun ensureCalendarSemester(
@@ -467,6 +583,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         }
 
         LaunchedEffect(timetableRepository) {
+            try {
             val settings = timetableRepository.settings()
             val available = timetableRepository.semestersWithinImportWindow()
             importedSemesters = available
@@ -477,6 +594,9 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                 if (settings.activeSemesterId != semester.id) {
                     timetableRepository.updateSettings(settings.copy(activeSemesterId = semester.id))
                 }
+            }
+            } finally {
+                localScheduleLoaded = true
             }
         }
 
@@ -509,6 +629,15 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         LaunchedEffect(context) {
             QztcNotifications.ensureChannels(context)
         }
+        LaunchedEffect(savedCredentials?.username) {
+            val name = savedCredentials?.username.orEmpty().trim()
+            val account = java.security.MessageDigest.getInstance("SHA-256").digest(name.toByteArray()).joinToString("") { "%02x".format(it) }
+            cn.qztc.timetable.education.HomeworkReminderScheduler.activate(context, account)
+        }
+
+        LaunchedEffect(preferences.dailyAgenda, loadedPreferences != null) {
+            if (loadedPreferences != null) cn.qztc.timetable.reminder.DailyAgendaScheduler.reschedule(context, preferences.dailyAgenda)
+        }
 
         LaunchedEffect(
             preferences.remindersEnabled,
@@ -516,6 +645,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             preferences.reminderDisplayMode,
             preferences.courseReminderOverrides,
             preferences.courseReminderMessages,
+            preferences.remindOnHolidays,
             demoScheduleState.importedSchedule,
         ) {
             val reminderSemester = Semester.forReminders(timetableRepository.semesters(), LocalDate.now())
@@ -528,13 +658,30 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                 displayMode = preferences.reminderDisplayMode,
                 courseOverrides = preferences.courseReminderOverrides,
                 courseMessages = preferences.courseReminderMessages,
+                remindOnHolidays = preferences.remindOnHolidays,
             )
         }
 
-        LaunchedEffect(loadedPreferences, openTodayOnStart) {
+        LaunchedEffect(launchRequestId, loadedPreferences, openTodayOnStart) {
             val loaded = loadedPreferences
-            if (current == null && loaded != null) {
-                current = if (openTodayOnStart) TopDestination.Today else loaded.startDestination()
+            if (openTodayOnStart && loaded != null && !todayLaunchHandled) {
+                todayLaunchHandled = true; current = TopDestination.Today; secondaryPage = SecondaryPage.NONE
+            }
+            else if (current == null && loaded != null) current = loaded.startDestination()
+        }
+        var adSkipLaunchHandled by remember(launchRequestId) {mutableStateOf(false)}
+        LaunchedEffect(launchRequestId,openAdSkipOnStart,loadedPreferences) {
+            if(openAdSkipOnStart&&loadedPreferences!=null&&!adSkipLaunchHandled) {
+                adSkipLaunchHandled=true
+                current=TopDestination.Mine
+                secondaryPage=SecondaryPage.AD_SKIP
+            }
+        }
+        LaunchedEffect(launchRequestId,openCalendarOnStart, loadedPreferences) {
+            if (openCalendarOnStart != null && loadedPreferences != null && !calendarLaunchHandled && runCatching {LocalDate.parse(openCalendarOnStart)}.isSuccess) {
+                calendarLaunchHandled = true
+                calendarOpenDate = openCalendarOnStart
+                current = TopDestination.Calendar; secondaryPage = SecondaryPage.NONE
             }
         }
 
@@ -542,6 +689,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             when (current) {
                 TopDestination.Today -> preferencesStore.setLastDestination(HomeView.TODAY)
                 TopDestination.Week -> preferencesStore.setLastDestination(HomeView.WEEK)
+                TopDestination.Calendar -> preferencesStore.setLastDestination(HomeView.CALENDAR)
                 else -> Unit
             }
         }
@@ -656,7 +804,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         val saveActivity: (ActivityEditDraft, List<String>) -> Unit = { draft, removeMeetingIds ->
             scope.launch {
                 runCatching {
-                    val semesterId = activeSemesterId ?: error("请先导入课表后再添加活动")
+                    val semesterId = if (draft.memoTime != null) "calendar" else activeSemesterId ?: "calendar"
                     val activity = ScheduleActivity(
                         id = draft.id?.takeIf { it.isNotBlank() } ?: "activity:$semesterId:${UUID.randomUUID()}",
                         semesterId = semesterId,
@@ -672,9 +820,12 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                         startDate = draft.startDate.takeIf { draft.kind == ActivityKind.DAY },
                         endDate = draft.endDate.takeIf { draft.kind == ActivityKind.DAY },
                         sessions = draft.sessions,
+                        memoTime = draft.memoTime,
+                        calendarTimetable = false,
                     )
                     timetableRepository.saveActivityWithCoverage(activity, removeMeetingIds)
-                    refreshSchedule(semesterId)
+                    calendarMemos = timetableRepository.activities("calendar")
+                    activeSemesterId?.let { refreshSchedule(it) }
                     snackbarHostState.showSnackbar(
                         if (removeMeetingIds.isEmpty()) "活动已保存" else "活动已保存，冲突课次已暂时隐藏",
                     )
@@ -688,11 +839,13 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             scope.launch {
                 runCatching {
                     if (activityId.startsWith("calendar-event:")) {
-                        val eventId = activityId.substringAfterLast(':')
+                        val semesterId = activeSemesterId ?: error("当前学期不可用")
+                        val eventId = activityId.removePrefix("calendar-event:$semesterId:")
                         context.getSharedPreferences("calendar-inclusion", Context.MODE_PRIVATE)
                             .edit().putBoolean("event:$eventId", false).apply()
                     }
                     timetableRepository.deleteActivity(activityId, restore)
+                    calendarMemos = timetableRepository.activities("calendar")
                     activeSemesterId?.let { refreshSchedule(it) }
                     snackbarHostState.showSnackbar(if (activityId.startsWith("calendar-event:")) "校历安排已从课表隐藏" else "活动已删除")
                 }.onFailure { error ->
@@ -706,6 +859,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         val glassSettings = LocalGlassSettings.current
 
         val openSecondaryPage: (SecondaryPage) -> Unit = { page ->
+            if (secondaryPage != SecondaryPage.NONE && secondaryPage != page) secondaryParents = secondaryParents + secondaryPage.name
             if (destination == TopDestination.Mine && secondaryPage == SecondaryPage.NONE) {
                 savedSettingsItemIndex = settingsListState.firstVisibleItemIndex
                 savedSettingsItemOffset = settingsListState.firstVisibleItemScrollOffset
@@ -714,7 +868,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
         }
         val closeSecondaryPage = {
             if (destination == TopDestination.Mine) settingsRestorePending = true
-            secondaryPage = SecondaryPage.NONE
+            secondaryPage = secondaryParents.lastOrNull()?.let(SecondaryPage::valueOf) ?: SecondaryPage.NONE
+            secondaryParents = secondaryParents.dropLast(1)
         }
         LaunchedEffect(destination, secondaryPage, settingsRestorePending) {
             if (destination == TopDestination.Mine && secondaryPage == SecondaryPage.NONE && settingsRestorePending) {
@@ -724,8 +879,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             }
         }
 
-        LaunchedEffect(loadedPreferences != null) {
-            if (loadedPreferences == null || permissionHistory.getBoolean("requested",false)) return@LaunchedEffect
+        LaunchedEffect(firstFrameReported) {
+            if (!firstFrameReported || permissionHistory.getBoolean("requested",false)) return@LaunchedEffect
             val missing = buildList {
                 if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                     add(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -739,6 +894,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
 
         BackHandler(enabled = showingSecondaryPage && secondaryPage != SecondaryPage.QNU_IMPORT) {
             when (secondaryPage) {
+                SecondaryPage.SEMESTER_SCHEDULE -> closeSecondaryPage()
                 SecondaryPage.COURSE_COLORS -> secondaryPage = SecondaryPage.PERSONALIZATION
                 SecondaryPage.BACKGROUND_CROP -> cropImagePath?.let { path ->
                     backgroundImageStore.discardCandidate(path)
@@ -753,23 +909,34 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
             transientParentDestination = null
         }
 
+        var backdropColor by remember { mutableStateOf<Color?>(null) }
+        val initialPageNeedsWebFrame = (destination == TopDestination.Calendar && !showingSecondaryPage) ||
+            secondaryPage == SecondaryPage.ACADEMIC_CALENDAR
+        LaunchedEffect(localScheduleLoaded, calendarMemosLoaded, backdropColor, initialPageNeedsWebFrame, calendarContentReady) {
+            if (!firstFrameReported && localScheduleLoaded && calendarMemosLoaded && backdropColor != null &&
+                (!initialPageNeedsWebFrame || calendarContentReady)) {
+                firstFrameReported = true
+                onReadyToDraw()
+            }
+        }
         GlassBackdropHost(
+            backdropColor = backdropColor,
             background = {
                 PageBackground(
                     preferences = loadedPreferences,
+                    preparedImage = preparedAppearance?.background,
                     darkTheme = darkTheme,
-                    reduceMotion = glassSettings.reduceMotion || suspendVisualEffects,
+                    reduceMotion = glassSettings.reduceMotion || suspendVisualEffects || scrollingVisualEffects || showingSecondaryPage,
                     importedImagePaths = importedBackgrounds.map { it.path },
+                    onBackdropColor = { backdropColor = it },
                 )
             },
-            // The native campus WebView remains outside the backdrop source;
-            // keep the wallpaper source active so the map page's glass top bar
-            // matches the other pages without capturing Leaflet frames.
-            suspendEffects = suspendVisualEffects ||
-                (destination == TopDestination.Mine && secondaryPage == SecondaryPage.NONE) ||
-                secondaryPage == SecondaryPage.CAMPUS_ALIASES,
+            // Avoid backdrop capture competing with lists and page transitions.
+            suspendEffects = suspendVisualEffects || scrollingVisualEffects || showingSecondaryPage ||
+                destination == TopDestination.Mine,
             content = {
             Scaffold(
+                modifier = Modifier.nestedScroll(visualScrollObserver),
                 containerColor = Color.Transparent,
                 contentWindowInsets = WindowInsets(0),
                 snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -777,6 +944,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                     if (!showingSecondaryPage && !coverBottomBar && !imeVisible) {
                         GlassDock(destination) { dest ->
                             if (dest == destination && secondaryPage == SecondaryPage.NONE) return@GlassDock
+                            pauseVisualEffects()
                             transientParentDestination = null
                             if (dest == TopDestination.Week) weekResetRequest += 1
                             if (dest == TopDestination.Today) {
@@ -784,6 +952,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                             }
                             current = dest
                             secondaryPage = SecondaryPage.NONE
+                            secondaryParents = emptyList()
                         }
                     }
                 },
@@ -797,10 +966,19 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                         .padding(padding),
                 ) {
                     if (loadedPreferences != null) {
-                    val pageKey = PageKey(destination, if (showingSecondaryPage) secondaryPage else SecondaryPage.NONE)
+                    val requestedPage = PageKey(destination, if (showingSecondaryPage) secondaryPage else if (destination == TopDestination.Calendar) SecondaryPage.ACADEMIC_CALENDAR else SecondaryPage.NONE)
+                    // Every calendar entrance reuses the same loaded WebView and navigation state.
+                    val pageKey = if (requestedPage.secondary == SecondaryPage.ACADEMIC_CALENDAR)
+                        PageKey(TopDestination.Calendar, SecondaryPage.ACADEMIC_CALENDAR) else requestedPage
                     val pageContent: @Composable (PageKey) -> Unit = { page ->
                         if (page.secondary != SecondaryPage.NONE) {
                             when (page.secondary) {
+                            SecondaryPage.COURSE_TOOLS -> cn.qztc.timetable.education.CourseImportToolsScreen(
+                                onBack = { closeSecondaryPage() },
+                                onImport = { importReturnPage = ImportReturnPage.COURSE_TOOLS; secondaryPage = SecondaryPage.QNU_IMPORT },
+                                onCheckChanges = { upcomingChangesDialog = true },
+                                canCheckChanges = activeSemester != null,
+                            )
                             SecondaryPage.COURSE_COLORS -> CourseColorSettingsScreen(
                                 presetColors = preferences.coursePresetColors,
                                 onColorsChange = { values ->
@@ -827,12 +1005,31 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 week = dayDetailWeek,
                                 day = dayDetailDay,
                                 coursePresetColors = preferences.coursePresetColors,
-                                onSaveActivity = saveActivity,
-                                onDeleteActivity = deleteActivity,
+                                onOpenCalendar = { date ->
+                                    calendarOpenDate = date.toString()
+                                    openSecondaryPage(SecondaryPage.ACADEMIC_CALENDAR)
+                                },
                                 onBack = { closeSecondaryPage() },
                             )
 
                             SecondaryPage.REMINDER_SETTINGS -> ReminderSettingsScreen(
+                                academicPluginInstalled = academicPluginInstalled,
+                                onPluginMarket = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
+                                dailyAgenda = preferences.dailyAgenda,
+                                onDailyAgendaChange = { settings ->
+                                    if (settings.enabled && !QztcNotifications.canPost(context) && Build.VERSION.SDK_INT >= 33) {
+                                        pendingReminderAction = ReminderPermissionAction(dailyAgenda = settings)
+                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else scope.launch { preferencesStore.setDailyAgenda(settings) }
+                                },
+                                onPreviewDailyAgenda = {
+                                    scope.launch {
+                                        val sent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            cn.qztc.timetable.reminder.DailyAgendaScheduler.preview(context, preferences.dailyAgenda)
+                                        }
+                                        snackbarHostState.showSnackbar(if (sent) "今日待办通知已发送" else "请先允许通知权限")
+                                    }
+                                },
                                 state = courseReminderState,
                                 courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
                                 semesterLabel = demoScheduleState.importedSchedule?.semester?.name ?: "尚未导入课表",
@@ -849,6 +1046,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                         }
                                 },
                                 onReminderDisplayModeChange = { mode -> testReminderMode(mode, saveMode = true) },
+                                onRemindOnHolidaysChange = { value -> scope.launch { preferencesStore.setRemindOnHolidays(value) } },
                                 onRemindersEnabledChange = { value ->
                                     if (value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !QztcNotifications.canPost(context)) {
                                         if (pendingReminderAction == null) {
@@ -875,6 +1073,79 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                             SecondaryPage.PLUGIN_MARKET -> PluginMarketScreen(
                                 onBack = { closeSecondaryPage() },
                                 onManagePlugin = { openSecondaryPage(SecondaryPage.AD_SKIP) },
+                                onReviewPlugin = { openSecondaryPage(SecondaryPage.REVIEW_PLUGIN) },
+                                onScheduleQaPlugin = { openSecondaryPage(SecondaryPage.SCHEDULE_QA_PLUGIN) },
+                                onExamSchedulePlugin = { openSecondaryPage(SecondaryPage.EXAM_SCHEDULE_PLUGIN) },
+                                onAcademicRecordsPlugin = { openSecondaryPage(SecondaryPage.ACADEMIC_HUB) },
+                            )
+                            SecondaryPage.REVIEW_PLUGIN -> cn.qztc.timetable.review.ReviewScreen(onBack = { closeSecondaryPage() })
+                            SecondaryPage.SCHEDULE_QA_PLUGIN -> cn.qztc.timetable.plugin.ScheduleQaPluginScreen(
+                                semesterLabel = activeSemester?.name ?: "尚未导入课表",
+                                courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
+                                meetings = demoScheduleState.importedSchedule?.state?.meetings.orEmpty(),
+                                onBack = { closeSecondaryPage() },
+                            )
+                            SecondaryPage.EXAM_SCHEDULE_PLUGIN -> cn.qztc.timetable.plugin.ExamSchedulePluginScreen(
+                                semesterLabel = activeSemester?.name ?: "尚未导入课表",
+                                onBack = { closeSecondaryPage() },
+                            )
+                            SecondaryPage.STUDY -> StudyScreen(
+                                initialTab = studyInitialTab,
+                                semesterLabel = activeSemester?.name ?: "尚未导入课表",
+                                courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
+                                credentials = savedCredentials,
+                                onBack = { closeSecondaryPage() },
+                                onConfigureAccount = { importReturnPage = ImportReturnPage.STUDY; secondaryPage = SecondaryPage.QNU_IMPORT },
+                            )
+                            SecondaryPage.HOMEWORK -> cn.qztc.timetable.education.HomeworkScreen(
+                                credentials = savedCredentials,
+                                onBack = { closeSecondaryPage() },
+                                onConfigureAccount = { importReturnPage = ImportReturnPage.HOMEWORK; secondaryPage = SecondaryPage.QNU_IMPORT },
+                            )
+                            SecondaryPage.ACADEMIC_HUB, SecondaryPage.ACADEMIC_CALENDAR -> cn.qztc.timetable.education.AcademicHubScreen(
+                                onPluginMarket = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
+                                initialTab = if (page.secondary == SecondaryPage.ACADEMIC_CALENDAR) "calendar" else "competitions",
+                                academicDays = demoScheduleState.importedSchedule?.academicDays.orEmpty(),
+                                initialCalendarDate = calendarOpenDate.takeIf { page.secondary == SecondaryPage.ACADEMIC_CALENDAR },
+                                onCalendarDateConsumed = { calendarOpenDate = null },
+                                rootPage = destination == TopDestination.Calendar && secondaryPage == SecondaryPage.NONE,
+                                active = pageKey == page,
+                                onContentReady = { if (page.secondary == SecondaryPage.ACADEMIC_CALENDAR) calendarContentReady = true },
+                                semesterLabel = activeSemester?.name ?: "尚未导入课表",
+                                onSchoolCalendar = { openSecondaryPage(SecondaryPage.SEMESTER_SCHEDULE) },
+                                onActivityManagement = { openSecondaryPage(SecondaryPage.ACTIVITY_MANAGEMENT) },
+                                activities = (demoScheduleState.activities() + calendarMemos).distinctBy { it.id },
+                                semester = activeSemester,
+                                activityPresetColors = preferences.coursePresetColors,
+                                onCoverBottomBar = { coverBottomBar = it },
+                                onSaveActivity = { draft ->
+                                    saveActivity(draft, emptyList())
+                                },
+                                onDeleteActivity = { id -> deleteActivity(id, true) },
+                                onBack = { closeSecondaryPage() },
+                                onEvents = { entries ->
+                                    // User-confirmed events are calendar-only, including old opt-ins.
+                                    if (academicPluginInstalled) timetableRepository.semesters().forEach { semester ->
+                                        timetableRepository.activities(semester.id).filter { it.id.startsWith("academic:${semester.id}:") }
+                                            .forEach { timetableRepository.deleteActivity(it.id, restoreCourses = true) }
+                                    }
+                                    activeSemesterId?.let { refreshSchedule(it) }
+                                },
+                            )
+                            SecondaryPage.GRADE_PORTAL -> AcademicPortalScreen(
+                                title = "成绩查询",
+                                credentials = savedCredentials,
+                                onBack = { secondaryPage = SecondaryPage.STUDY },
+                            )
+                            SecondaryPage.EVALUATION_PORTAL -> AcademicPortalScreen(
+                                title = "快速评教",
+                                credentials = savedCredentials,
+                                onBack = { secondaryPage = SecondaryPage.STUDY },
+                            )
+                            SecondaryPage.ANNOUNCEMENTS -> AnnouncementScreen(
+                                store = announcementStore,
+                                onBack = { closeSecondaryPage() },
+                                onUpdate = { checkForUpdates() },
                             )
 
                             SecondaryPage.PERSONALIZATION -> PersonalizationScreen(
@@ -983,6 +1254,43 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 onBack = { closeSecondaryPage() },
                             )
 
+                            SecondaryPage.ACTIVITY_MANAGEMENT -> {
+                                val term = activeSemester ?: demoScheduleState.importedSchedule?.semester ?: importedSemesters.firstOrNull()
+                                val managedActivities = (demoScheduleState.activities() + calendarMemos).distinctBy { it.id }
+                                var editingId by remember { mutableStateOf<String?>(null) }
+                                var addingDate by remember { mutableStateOf<LocalDate?>(null) }
+                                val editorVisible = pageKey == page && (editingId != null || addingDate != null)
+                                DisposableEffect(editorVisible) {
+                                    coverBottomBar = editorVisible
+                                    onDispose { coverBottomBar = false }
+                                }
+                                cn.qztc.timetable.feature.settings.ActivityManagementScreen(
+                                    activities = managedActivities, semester = term, semesterOptions = importedSemesters,
+                                    academicDays = demoScheduleState.importedSchedule?.academicDays.orEmpty(),
+                                    onBack = { closeSecondaryPage() }, onEdit = { editingId = it }, onAdd = { addingDate = it },
+                                    onDelete = { ids -> ids.forEach {deleteActivity(it,true)} },
+                                    presetColors = preferences.coursePresetColors,
+                                    onColor = { id,color -> managedActivities.firstOrNull {it.id==id}?.let { selected ->
+                                        saveActivity(selected.toEditDraft(LocalDate.now().dayOfWeek.value,selected.startDate?:LocalDate.now(),term?.totalWeeks?:20).copy(color=color),emptyList())
+                                    } },
+                                    activityColor = { Color(android.graphics.Color.parseColor(cn.qztc.timetable.feature.timetable.activityColorCss(it))) })
+                                val activity = editingId?.let { id -> managedActivities.firstOrNull { it.id == id } }
+                                    ?: addingDate?.let { date -> cn.qztc.timetable.core.domain.model.ScheduleActivity(
+                                        id = "", semesterId = "calendar", name = "", kind = cn.qztc.timetable.core.domain.model.ActivityKind.DAY,
+                                        startDate = date, endDate = date, color = preferences.coursePresetColors.firstOrNull()) }
+                                activity?.let { selected ->
+                                    cn.qztc.timetable.feature.timetable.ActivityMemoEditor(
+                                        title = if (editingId == null) "添加活动" else "编辑活动", editorKey = selected.id.ifBlank { "management-add-$addingDate" },
+                                        initial = selected.toEditDraft(LocalDate.now().dayOfWeek.value, selected.startDate ?: LocalDate.now(), term?.totalWeeks ?: 20),
+                                        presetColors = preferences.coursePresetColors,
+                                        semester = term,
+                                        onPreviewReminder={popup,title,detail ->cn.qztc.timetable.reminder.activityReminderPreview(context,popup,title,detail)},
+                                        onSystemReminderSettings={popup ->cn.qztc.timetable.reminder.openActivityReminderSettings(context,popup)},
+                                        onBack = { editingId = null; addingDate = null },
+                                        onSave = { draft -> saveActivity(draft, emptyList()); editingId = null; addingDate = null },
+                                        onDelete = editingId?.let { id -> ({ deleteActivity(id, true); editingId = null }) })
+                                }
+                            }
                             SecondaryPage.SEMESTER_SCHEDULE -> {
                                 // A loaded timetable is authoritative even if
                                 // the surrounding settings state has not
@@ -1001,6 +1309,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                         periodScheme = periodScheme,
                                         academicDays = demoScheduleState.importedSchedule?.academicDays.orEmpty(),
                                         onBack = { closeSecondaryPage() },
+                                        calendarMode = true,
                                         onAcademicDaysChange = { updatedSemester, days ->
                                                 run {
                                                     timetableRepository.saveCalendar(updatedSemester, days)
@@ -1016,12 +1325,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                                     val eventYear=first?.plus(if(spring)1 else 0)
                                                     eventYear==target.startDate.year && (if(spring) cn.qztc.timetable.core.domain.model.Term.SPRING else cn.qztc.timetable.core.domain.model.Term.AUTUMN)==target.term
                                                 }
-                                                matching.forEach { event ->
-                                                    timetableRepository.upsertActivity(cn.qztc.timetable.core.domain.model.ScheduleActivity(
-                                                        id="calendar-event:${target.id}:${event.id}",semesterId=target.id,name=event.name,
-                                                        note=if(event.type==cn.qztc.timetable.feature.settings.SchoolCalendarEventType.SPORTS_MEETING)event.detail else "",
-                                                        kind=cn.qztc.timetable.core.domain.model.ActivityKind.DAY,
-                                                        startDate=event.startDate,endDate=event.endDate?:event.startDate))
+                                                cn.qztc.timetable.feature.settings.calendarImportEvents(matching).forEach { event ->
+                                                    timetableRepository.upsertActivity(event.toCalendarActivity(target.id))
                                                 }
                                             }
                                             refreshSchedule(activeSemesterId ?: semester.id)
@@ -1034,7 +1339,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                             refreshSchedule(activeSemesterId ?: semester.id)
                                         },
                                         onTimelineDaysChange = { original, replacement ->
-                                            fun key(day: cn.qztc.timetable.core.domain.calendar.AcademicDay)="${day.date}:${day.kind}:${day.name}"
+                                            fun key(day: cn.qztc.timetable.core.domain.calendar.AcademicDay)="${day.date}:${day.kind}"
                                             val oldKeys=original.map(::key).toSet()
                                             for(target in timetableRepository.semesters()) {
                                                 val first=cn.qztc.timetable.core.domain.calendar.SemesterCalendar.dateOf(target,1,1)
@@ -1062,24 +1367,14 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                             secondaryPage = SecondaryPage.QNU_IMPORT
                                         },
                                         semesterOptions = importedSemesters,
-                                        activities = demoScheduleState.activities(),
+                                        activities = (demoScheduleState.activities() + calendarMemos).distinctBy { it.id },
+                                        onOpenCalendar = { date ->
+                                            calendarOpenDate = date.toString()
+                                            openSecondaryPage(SecondaryPage.ACADEMIC_CALENDAR)
+                                        },
                                         importedCourseCount = demoScheduleState.importedSchedule?.state?.courses?.size ?: 0,
                                         importedTeachingWeeks = demoScheduleState.importedSchedule
                                             ?.takeIf { it.semester.id == semester.id }?.state?.importedTeachingWeeks,
-                                        activityPresetColors = preferences.coursePresetColors,
-                                        onSaveActivity = { activity ->
-                                            timetableRepository.upsertActivity(activity)
-                                            refreshSchedule(semester.id)
-                                        },
-                                        onDeleteActivity = { activityId ->
-                                            timetableRepository.deleteActivity(activityId, restoreCourses = true)
-                                            if (activityId.startsWith("calendar-event:")) {
-                                                val eventId = activityId.substringAfterLast(':')
-                                                context.getSharedPreferences("calendar-inclusion", Context.MODE_PRIVATE)
-                                                    .edit().putBoolean("event:$eventId", false).apply()
-                                            }
-                                            refreshSchedule(semester.id)
-                                        },
                                         onSelectSemester = { selected ->
                                             scope.launch {
                                                 runCatching {
@@ -1214,12 +1509,17 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
 
                             SecondaryPage.QNU_IMPORT -> QnuImportScreen(
                                 syncOnly = importReturnPage == ImportReturnPage.SYNC_CENTER,
+                                automaticCheck = importReturnPage == ImportReturnPage.SYNC_CENTER,
+                                automaticImport = false,
+                                showAutomaticCheck = true,
+                                campusNetworkChecked = importCampusChecked,
+                                onCheckFailed = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
                                 savedCredentials = savedCredentials,
                                 onSaveCredentials = { credentials ->
                                     runCatching { credentialStore.save(credentials) }
                                         .onSuccess {
                                             credentialRevision += 1
-                                            scope.launch { snackbarHostState.showSnackbar("教务账号已加密保存，仅用于本页自动填充") }
+                                            scope.launch { snackbarHostState.showSnackbar("教务账号已加密保存，可用于课表与成绩获取") }
                                         }
                                         .onFailure { error ->
                                             scope.launch {
@@ -1229,14 +1529,20 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 },
                                 onClearCredentials = {
                                     credentialStore.clear()
+                                    cn.qztc.timetable.education.GradeCache(context).clear()
+                                    cn.qztc.timetable.education.GradeCache(context, "qnu_credit_progress").clear()
                                     credentialRevision += 1
                                     scope.launch { snackbarHostState.showSnackbar("已清除保存的教务账号") }
                                 },
                                 onBack = {
+                                    importCampusChecked = false
                                     val returnPage = when (importReturnPage) {
-                                        ImportReturnPage.SYNC_CENTER -> SecondaryPage.SEMESTER_SCHEDULE
+                                        ImportReturnPage.STUDY -> SecondaryPage.STUDY
+                                        ImportReturnPage.HOMEWORK -> SecondaryPage.HOMEWORK
+                                        ImportReturnPage.SYNC_CENTER -> SecondaryPage.NONE
                                         ImportReturnPage.COURSE_ARRANGEMENT -> SecondaryPage.SEMESTER_SCHEDULE
-                                        ImportReturnPage.NONE -> SecondaryPage.NONE
+                                        ImportReturnPage.COURSE_TOOLS -> SecondaryPage.COURSE_TOOLS
+                                        ImportReturnPage.NONE, ImportReturnPage.DIRECT -> SecondaryPage.NONE
                                     }
                                     if (returnPage == SecondaryPage.NONE) closeSecondaryPage() else secondaryPage = returnPage
                                     importReturnPage = ImportReturnPage.NONE
@@ -1246,14 +1552,17 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                     scope.launch {
                                         if (importReturnPage == ImportReturnPage.SYNC_CENTER) {
                                             runCatching {
-                                                val target = requireNotNull(timetableRepository.semesters().maxWithOrNull(compareBy({ it.schoolYear }, { it.term.ordinal })))
+                                                val target = requireNotNull(timetableRepository.semesters().filter { timetableRepository.state(it.id).courses.isNotEmpty() }
+                                                    .maxWithOrNull(compareBy({ it.schoolYear }, { it.term.ordinal })))
                                                 val hint = candidate.semesterHint
                                                 require(!candidate.hasErrors && hint?.year == target.schoolYear && hint.term == target.term)
                                                 val next = cn.qztc.timetable.core.domain.schedule.UpcomingScheduleChanges.merge(
                                                     target, timetableRepository.state(target.id), candidate.state,
                                                     timetableRepository.periodScheme(target.id)?.periods.orEmpty(), java.time.LocalDateTime.now())
                                                 cn.qztc.timetable.sync.ScheduleChangeInbox(context, target.id).receive(next.exceptions)
-                                                secondaryPage = SecondaryPage.SYNC_CENTER
+                                                closeSecondaryPage()
+                                                upcomingChangesAlreadyChecked = true
+                                                upcomingChangesDialog = true
                                                 importReturnPage = ImportReturnPage.NONE
                                             }.onFailure { snackbarHostState.showSnackbar("未读到当前学期完整的停调课记录，原课表已保留") }
                                             return@launch
@@ -1286,7 +1595,12 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                                 )
                                             }
                                             if (outcome !is ImportOutcome.Failed) {
-                                                val imported = timetableRepository.importedSchedule(semester)
+                                                val savedDays = timetableRepository.academicDays(semester.id)
+            val savedActivities = timetableRepository.activities(semester.id)
+            val defaults = cn.qztc.timetable.feature.settings.CalendarScheduleDefaults.cached(context, semester, savedDays, savedActivities)
+            if (defaults.days.isNotEmpty() || defaults.removedDayIds.isNotEmpty()) timetableRepository.replaceAcademicDays(semester.id, savedDays.filterNot { saved -> saved.id in defaults.removedDayIds || defaults.days.any { it.date == saved.date } } + defaults.days)
+            defaults.activities.forEach { timetableRepository.upsertActivity(it) }
+            val imported = timetableRepository.importedSchedule(semester)
                                                 if (imported.state.courses.isNotEmpty()) {
                                                     activeSemesterId = semester.id
                                                     demoScheduleState.loadImported(imported)
@@ -1303,8 +1617,11 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                             }
                                             val nextPage = when (returnPage) {
                                                 ImportReturnPage.COURSE_ARRANGEMENT -> SecondaryPage.SEMESTER_SCHEDULE
+                                                ImportReturnPage.COURSE_TOOLS -> SecondaryPage.COURSE_TOOLS
                                                 ImportReturnPage.SYNC_CENTER -> if (syncOnlyImport) SecondaryPage.SYNC_CENTER else SecondaryPage.NONE
-                                                ImportReturnPage.NONE -> SecondaryPage.NONE
+                                                ImportReturnPage.NONE, ImportReturnPage.DIRECT -> SecondaryPage.NONE
+                                                ImportReturnPage.STUDY -> SecondaryPage.STUDY
+                                                ImportReturnPage.HOMEWORK -> SecondaryPage.HOMEWORK
                                             }
                                             if (nextPage == SecondaryPage.NONE) closeSecondaryPage() else secondaryPage = nextPage
                                             importReturnPage = ImportReturnPage.NONE
@@ -1335,17 +1652,21 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                         } else {
                             when (page.destination) {
                             TopDestination.Today -> TodayScreen(
+                                active = pageKey == page,
                                 scheduleState = demoScheduleState,
                                 coursePresetColors = preferences.coursePresetColors,
                                 reminderState = courseReminderState,
                                 onSaveReminder = saveReminder,
                                 onSaveCourseEdit = saveCourseEdit,
                                 onDeleteCourse = deleteCourse,
-                                onSaveActivity = saveActivity,
-                                onDeleteActivity = deleteActivity,
+                                onOpenCalendar = { date ->
+                                    calendarOpenDate = date.toString()
+                                    openSecondaryPage(SecondaryPage.ACADEMIC_CALENDAR)
+                                },
                                 onCoverBottomBar = { coverBottomBar = it },
                             )
                             TopDestination.Week -> WeekScreen(
+                                active = pageKey == page,
                                 reminderState = courseReminderState,
                                 onSaveReminder = saveReminder,
                                 scheduleState = demoScheduleState,
@@ -1353,18 +1674,9 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 onSaveCourseEdit = saveCourseEdit,
                                 onDeleteCourse = deleteCourse,
                                 onAddCourse = addCourse,
-                                onSaveActivity = saveActivity,
-                                onDeleteActivity = deleteActivity,
-                                onSaveAcademicDays = { updated ->
-                                    demoScheduleState.importedSchedule?.semester?.id?.let { semesterId ->
-                                        scope.launch {
-                                            timetableRepository.replaceAcademicDays(
-                                                semesterId,
-                                                cn.qztc.timetable.core.domain.calendar.AcademicDayRanges.normalize(updated),
-                                            )
-                                            refreshSchedule(semesterId)
-                                        }
-                                    }
+                                onOpenCalendar = { date ->
+                                    calendarOpenDate = date.toString()
+                                    openSecondaryPage(SecondaryPage.ACADEMIC_CALENDAR)
                                 },
                                 resetToCurrentWeekRequest = weekResetRequest,
                                 initialWeek = demoScheduleState.currentWeek,
@@ -1389,7 +1701,9 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                     }
                                 },
                             )
+                            TopDestination.Calendar -> Unit // Calendar uses the shared academic page above.
                             TopDestination.Mine -> MineScreen(
+                                active = pageKey == page,
                                 listState = settingsListState,
                                 state = MineUiState(
                                     homePreference = preferences.homePreference,
@@ -1419,6 +1733,7 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                         ?: "未设置",
                                     activeSemester = activeSemester,
                                     periodScheme = activePeriodScheme,
+                                    teachingWeeks = demoScheduleState.importedSchedule?.state?.importedTeachingWeeks,
                                     semesters = importedSemesters.map { MineSemesterOption(it.id, it.name) },
                                     updateLabel = when (val state = updateState) {
                                         AppUpdateState.Checking -> "正在检查"
@@ -1455,16 +1770,39 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                     scope.launch { preferencesStore.setFontScale(scale) }
                                 },
                                 onEduImportClick = {
-                                    importReturnPage = ImportReturnPage.NONE
-                                    openSecondaryPage(SecondaryPage.QNU_IMPORT)
+                                    importReturnPage = ImportReturnPage.DIRECT
+                                    importCampusDialog = true
                                 },
+                                onStudyClick = { studyInitialTab = 0; openSecondaryPage(SecondaryPage.STUDY) },
+                                onCreditsClick = { studyInitialTab = 1; openSecondaryPage(SecondaryPage.STUDY) },
+                                onCheckChangesClick = {
+                                    upcomingChangesAlreadyChecked = false
+                                    upcomingChangesDialog = true
+                                },
+                                onSettingsVisibilityChange = { coverBottomBar = it },
+                                onCompetitionsClick = { openSecondaryPage(SecondaryPage.ACADEMIC_HUB) },
+                                onCalendarClick = { openSecondaryPage(SecondaryPage.ACADEMIC_CALENDAR) },
+                                pinnedPlugins = cn.qztc.timetable.plugin.PluginRegistry.plugins.filter {
+                                    it.installedVersion(context) > 0 && cn.qztc.timetable.plugin.PluginPins.contains(context, it.descriptor.id)
+                                }.map { plugin -> cn.qztc.timetable.feature.settings.MinePinnedPlugin(plugin.descriptor.name) {
+                                    openSecondaryPage(when (plugin.descriptor.id) {
+                                        "adskip" -> SecondaryPage.AD_SKIP
+                                        "review" -> SecondaryPage.REVIEW_PLUGIN
+                                        "academic-records" -> SecondaryPage.ACADEMIC_HUB
+                                        "schedule-qa" -> SecondaryPage.SCHEDULE_QA_PLUGIN
+                                        else -> SecondaryPage.EXAM_SCHEDULE_PLUGIN
+                                    })
+                                } },
+                                onEvaluationClick = { openSecondaryPage(SecondaryPage.EVALUATION_PORTAL) },
                                 onCampusAliasClick = {
                                     openSecondaryPage(SecondaryPage.CAMPUS_ALIASES)
                                 },
                                 onCampusMapClick = { openSecondaryPage(SecondaryPage.CAMPUS_MAP) },
+                                onHomeworkClick = { homeworkCampusDialog = true },
                                 onStartDateClick = {
-                                    openSecondaryPage(SecondaryPage.SEMESTER_SCHEDULE)
+                                    openSecondaryPage(SecondaryPage.ACTIVITY_MANAGEMENT)
                                 },
+                                onSchoolCalendarClick = { openSecondaryPage(SecondaryPage.SEMESTER_SCHEDULE) },
                                 onSemesterSelect = { semesterId ->
                                     scope.launch {
                                         runCatching {
@@ -1487,6 +1825,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                                 onStorageClick = { refreshSnapshots(); openSecondaryPage(SecondaryPage.STORAGE) },
                                 onAdSkipClick = { openSecondaryPage(SecondaryPage.AD_SKIP) },
                                 onPluginMarketClick = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
+                                onAnnouncementsClick = { openSecondaryPage(SecondaryPage.ANNOUNCEMENTS) },
+                                unreadAnnouncements = announcementItems.count { !announcementStore.read(it) },
                                 onPrivacyAboutClick = {
                                     openSecondaryPage(SecondaryPage.PRIVACY_ABOUT)
                                 },
@@ -1495,22 +1835,43 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                             }
                         }
                     }
-                    // Native WebViews must draw directly in the host. A cached
-                    // transition layer can stop presenting their new frames.
-                    if (pageKey.secondary in setOf(SecondaryPage.CAMPUS_MAP, SecondaryPage.CAMPUS_ALIASES, SecondaryPage.QNU_IMPORT)) {
-                        pageContent(pageKey)
-                    } else {
-                        AnimatedContent(
-                            targetState = pageKey,
-                            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(160)) },
-                            label = "page-content-transition",
-                            modifier = Modifier.fillMaxSize(),
-                        ) { pageContent(it) }
+                    // A page fade exposes the wallpaper through the material and
+                    // composes both screens at once. Replace pages at full opacity.
+                    val calendarKey = PageKey(TopDestination.Calendar, SecondaryPage.ACADEMIC_CALENDAR)
+                    val timetableRoot = pageKey.secondary == SecondaryPage.NONE &&
+                        pageKey.destination in listOf(TopDestination.Today, TopDestination.Week, TopDestination.Mine)
+                    val mountedTimetables = if (timetableRoot) (retainedTimetablePages + pageKey.destination).distinct() else retainedTimetablePages.toList()
+                    androidx.compose.runtime.SideEffect {
+                        if (pageKey == calendarKey) calendarVisited = true
+                        if (timetableRoot && pageKey.destination !in retainedTimetablePages) retainedTimetablePages.add(pageKey.destination)
                     }
+                    if (calendarVisited) {
+                        val calendarActive = pageKey == calendarKey
+                        cn.qztc.timetable.education.RetainedStudyTab(calendarActive) {
+                            pageStates.SaveableStateProvider("${calendarKey.destination}:${calendarKey.secondary}") { pageContent(calendarKey) }
+                        }
+                    }
+                    mountedTimetables.forEach { destinationKey ->
+                        val retainedKey = PageKey(destinationKey, SecondaryPage.NONE)
+                        androidx.compose.runtime.key(destinationKey) {
+                            cn.qztc.timetable.education.RetainedStudyTab(pageKey == retainedKey) {
+                                pageStates.SaveableStateProvider("${retainedKey.destination}:${retainedKey.secondary}") { pageContent(retainedKey) }
+                            }
+                        }
+                    }
+                    if (pageKey != calendarKey && !timetableRoot) pageStates.SaveableStateProvider("${pageKey.destination}:${pageKey.secondary}") { pageContent(pageKey) }
                     }
                 }
             }
         }
+        )
+        if (homeworkCampusDialog) cn.qztc.timetable.qnu.CampusNetworkDialog(
+            onDismiss = { homeworkCampusDialog = false },
+            onReady = { homeworkCampusDialog = false; openSecondaryPage(SecondaryPage.HOMEWORK) },
+        )
+        if (importCampusDialog) cn.qztc.timetable.qnu.CampusNetworkDialog(
+            onDismiss = { importCampusDialog = false },
+            onReady = { importCampusDialog = false; importCampusChecked = true; openSecondaryPage(SecondaryPage.QNU_IMPORT) },
         )
         if (upcomingChangesDialog) {
             val semester = activeSemester ?: demoScheduleState.importedSchedule?.semester
@@ -1519,7 +1880,8 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
                     semester = semester,
                     savedCredentials = savedCredentials,
                     repository = timetableRepository,
-                    onDismiss = { upcomingChangesDialog = false },
+                    checkOnOpen = !upcomingChangesAlreadyChecked,
+                    onDismiss = { upcomingChangesDialog = false; upcomingChangesAlreadyChecked = false },
                     onLogin = {
                         upcomingChangesDialog = false
                         importReturnPage = ImportReturnPage.SYNC_CENTER
@@ -1566,10 +1928,22 @@ fun QztcApp(openTodayOnStart: Boolean = false) {
 }
 
 private enum class SecondaryPage {
+    COURSE_TOOLS,
+    ACADEMIC_HUB,
+    ACADEMIC_CALENDAR,
+    ACTIVITY_MANAGEMENT,
     REMINDER_SETTINGS,
     STORAGE,
     AD_SKIP,
     PLUGIN_MARKET,
+    REVIEW_PLUGIN,
+    SCHEDULE_QA_PLUGIN,
+    EXAM_SCHEDULE_PLUGIN,
+    STUDY,
+    HOMEWORK,
+    GRADE_PORTAL,
+    EVALUATION_PORTAL,
+    ANNOUNCEMENTS,
     NONE,
     COURSE_COLORS,
     DAY_DETAIL,
@@ -1585,6 +1959,10 @@ private enum class SecondaryPage {
 }
 
 private enum class ImportReturnPage {
+    DIRECT,
+    COURSE_TOOLS,
+    STUDY,
+    HOMEWORK,
     COURSE_ARRANGEMENT,
     NONE,
     SYNC_CENTER,
@@ -1603,7 +1981,7 @@ private suspend fun TimetableRepository.importedSchedule(semester: Semester): Im
 private suspend fun TimetableRepository.semestersWithinImportWindow(): List<Semester> {
     val currentYear = LocalDate.now().year
     return semesters()
-        .filter { it.schoolYear in (currentYear - 5)..(currentYear + 1) }
+        .filter { it.schoolYear in (currentYear - 5)..(currentYear + 1) && state(it.id).courses.isNotEmpty() }
 }
 
 private data class PageKey(

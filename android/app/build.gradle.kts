@@ -25,8 +25,8 @@ android {
         applicationId = "cn.qztc.timetable"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.0.0"
+        versionCode = 14
+        versionName = "1.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["amapLocationKey"] = amapLocationKey
     }
@@ -46,6 +46,8 @@ android {
         buildConfig = true
     }
 
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/academicAssets"))
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -63,6 +65,18 @@ android {
 
 }
 
+val prepareAcademicAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("../web/academic-preview")) {
+        include("*.js", "*.css", "community-feed.json", "index.html")
+        exclude("audited-record-data.js")
+        rename("index.html", "mobile.html")
+        rename("app.js", "academic-app.js")
+        filter { line: String -> line.replace("src=\"app.js\"", "src=\"academic-app.js\"") }
+    }
+    into(layout.buildDirectory.dir("generated/academicAssets/academic-hub"))
+}
+tasks.named("preBuild").configure { dependsOn(prepareAcademicAssets) }
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -78,6 +92,7 @@ dependencies {
     implementation(project(":integration:qnu-android"))
 
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

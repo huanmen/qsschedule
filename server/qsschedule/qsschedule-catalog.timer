@@ -1,0 +1,11 @@
+[Unit]
+Description=Update competition catalog every day
+
+[Timer]
+OnCalendar=*-*-* 06:20:00
+Persistent=true
+RandomizedDelaySec=5min
+Unit=qsschedule-catalog.service
+
+[Install]
+WantedBy=timers.target

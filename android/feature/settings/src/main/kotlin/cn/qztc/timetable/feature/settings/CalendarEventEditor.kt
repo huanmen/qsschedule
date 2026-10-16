@@ -134,5 +134,5 @@ internal fun CalendarDateChoice(
 
 @Composable
 internal fun CalendarDatePicker(date: LocalDate?, onDismiss: () -> Unit, onClear: (() -> Unit)? = null, onChoose: (LocalDate) -> Unit) {
-    QztcDatePicker(date, onDismiss, onClear, onChoose)
+    QztcDatePicker(date, onDismiss, onClear, onChoose = onChoose)
 }

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh official exam notices hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=3min
+Persistent=true
+Unit=qsschedule-exams.service
+
+[Install]
+WantedBy=timers.target

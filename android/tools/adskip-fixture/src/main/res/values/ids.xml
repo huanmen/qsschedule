@@ -1,0 +1,7 @@
+<resources>
+    <item name="ad_container" type="id" />
+    <item name="close_btn" type="id" />
+    <item name="fixture_status" type="id" />
+    <item name="tobid_interstitial_ad_detail" type="id" />
+    <item name="tobid_interstitial_skip_text" type="id" />
+</resources>
