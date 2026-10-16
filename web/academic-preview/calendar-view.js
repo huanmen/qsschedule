@@ -85,6 +85,28 @@ function calendarDayAgenda(){
  calendarTopbar();icons($('#calendar-agenda'));window.saveAcademicNavigation?.();
 }
 function calendarSetCollapsed(value){calendarCollapsed=value;$('#calendar-panel').classList.toggle('collapsed',value);$('#calendar-fold').setAttribute('aria-expanded',String(!value));$('#calendar-fold').setAttribute('aria-label',value?'展开月历':'收起为周历');window.saveAcademicNavigation?.();}
+function calendarBindAgendaGestures(agenda){
+ let gesture=null;
+ const atTop=()=>Math.max(window.scrollY,document.scrollingElement?.scrollTop||0)<=4;
+ agenda.addEventListener('touchstart',e=>{
+  if(e.touches.length!==1||e.target.closest('button,a,input,select,textarea')){gesture=null;return;}
+  gesture={x:e.touches[0].clientX,y:e.touches[0].clientY,atTop:atTop(),handled:false};
+ },{passive:true});
+ agenda.addEventListener('touchmove',e=>{
+  if(!gesture||e.touches.length!==1)return;
+  const dx=e.touches[0].clientX-gesture.x,dy=e.touches[0].clientY-gesture.y;
+  // A drag that starts in the list stays a normal scroll until the next gesture.
+  if(!gesture.atTop||Math.abs(dy)<=Math.abs(dx)*1.3)return;
+  if(gesture.handled){if(e.cancelable)e.preventDefault();return;}
+  if((dy<0&&!calendarCollapsed)||(dy>0&&calendarCollapsed)){
+   if(Math.abs(dy)>8&&e.cancelable)e.preventDefault();
+   if(Math.abs(dy)>45){gesture.handled=true;calendarSetCollapsed(dy<0);}
+  }
+ },{passive:false});
+ const finish=()=>{gesture=null;};
+ agenda.addEventListener('touchend',finish,{passive:true});
+ agenda.addEventListener('touchcancel',finish,{passive:true});
+}
 function calendarAdd(){
  if(window.AcademicHost){window.saveAcademicNavigation?.();AcademicHost.postMessage(JSON.stringify({action:'add-activity',date:calendarSelectedDate}));return;}
  sheet('添加活动','<p class="sheet-text">活动在日历内添加和编辑，支持节次、多时段、备注和颜色；手动活动只显示在日历页。此网页预览可添加单次日历活动。</p><label class="field-label">名称</label><input id="custom-event-name" class="sheet-input" maxlength="100"><button class="primary" id="custom-event-next">选择时间</button>');$('#custom-event-next').onclick=()=>{const name=$('#custom-event-name').value.trim();if(name){eventForm({name});$('#event-date').value=calendarSelectedDate;}};
@@ -131,6 +153,7 @@ renderCalendar=function(){
  let touch=null;$('#calendar-panel').addEventListener('touchstart',e=>{touch={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
  $('#calendar-panel').addEventListener('touchend',e=>{if(!touch)return;const dx=e.changedTouches[0].clientX-touch.x,dy=e.changedTouches[0].clientY-touch.y;touch=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.3){shiftCalendarMonth(dx<0?1:-1);window.saveAcademicNavigation?.();}else if(Math.abs(dy)>45&&Math.abs(dx)<Math.abs(dy))calendarSetCollapsed(dy<0);},{passive:true});
  $('#calendar-panel').addEventListener('wheel',e=>{if(e.deltaY>15&&!calendarCollapsed){e.preventDefault();calendarSetCollapsed(true);}else if(e.deltaY< -15&&calendarCollapsed&&scrollY<5){e.preventDefault();calendarSetCollapsed(false);}},{passive:false});
+ calendarBindAgendaGestures($('#calendar-agenda'));
  calendarDayAgenda();calendarPaintRanges();updateCalendarExport();icons();
 };
 const calendarActivityColors=portalRead('calendar-activity-colors',{});

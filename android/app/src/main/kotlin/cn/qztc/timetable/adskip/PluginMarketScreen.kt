@@ -161,15 +161,14 @@ fun PluginMarketScreen(onBack: () -> Unit, onManagePlugin: () -> Unit,
             catalog.rules.filter { entry -> sources.none { source -> source.plugins.any { it.id == entry.id } } }) }
         (listOfNotNull(officialSource) + sources.filterNot { it.url == OfficialPluginCatalog.RULES_URL }).forEach { source ->
             val isOfficial = source.url == OfficialPluginCatalog.RULES_URL
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isOfficial) "官方规则插件" else source.url.substringAfter("://").substringBefore('/'), Modifier.weight(1f),
+            if (!isOfficial) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(source.url.substringAfter("://").substringBefore('/'), Modifier.weight(1f),
                     style = QztcTypography.meta, color = colors.mut)
                 IconButton(onClick = {
                     scope.launch {
                         sourceBusy = true
                         runCatching {
-                            if (isOfficial) official = OfficialPluginCatalog.refresh(context)
-                            else ExternalPluginFeeds.save(context, ExternalPluginFeeds.fetch(source.url))
+                            ExternalPluginFeeds.save(context, ExternalPluginFeeds.fetch(source.url))
                         }.onSuccess { sourceRevision++ }
                             .onFailure { error = it.message ?: "更新来源失败" }
                         sourceBusy = false
@@ -177,7 +176,7 @@ fun PluginMarketScreen(onBack: () -> Unit, onManagePlugin: () -> Unit,
                 }, enabled = !sourceBusy) {
                     Icon(Icons.Outlined.Refresh, "更新插件来源", tint = colors.mut)
                 }
-                if (!isOfficial) IconButton(onClick = {
+                IconButton(onClick = {
                     ExternalPluginFeeds.removeSource(context, source.url)
                     sourceRevision++
                 }, enabled = source.plugins.none { ExternalPluginFeeds.installedVersion(context, it.id) > 0 }) {

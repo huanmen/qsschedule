@@ -91,7 +91,7 @@ if(window.AcademicHost){
     if(event.target.closest('[data-school-calendar]')){saveAcademicNavigation();host({action:'school-calendar'});}
     if(event.target.closest('[data-plugin-market]')){host({action:'plugin-market'});}
     const activity=event.target.closest('[data-native-activity]');
-    if(activity){closeSheet();saveAcademicNavigation();host({action:'edit-activity',activityId:activity.dataset.nativeActivity});}
+    if(activity){activity.blur();closeSheet();saveAcademicNavigation();host({action:'edit-activity',activityId:activity.dataset.nativeActivity});}
     const tabButton=event.target.closest('[data-academic-tab]');
     if(tabButton)host({action:'tab',tab:tabButton.dataset.academicTab});
     const link=event.target.closest('a[href]');

@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import cn.qztc.timetable.core.domain.model.Course
@@ -54,6 +55,9 @@ fun ReminderSettingsScreen(
     val colors = LocalQztcColors.current
     var expandedCourse by rememberSaveable { mutableStateOf<String?>(null) }
     var showAddCourses by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.enabled) {
+        if (!state.enabled) { expandedCourse = null; showAddCourses = false }
+    }
     val sortedCourses = remember(courses) { courses.distinctBy { it.id }.sortedBy { it.name } }
     val included = sortedCourses.filter { state.overrides[it.id] != 0 }
     val excluded = sortedCourses.filter { state.overrides[it.id] == 0 }
@@ -75,28 +79,29 @@ fun ReminderSettingsScreen(
                         }
                         Switch(state.enabled, onRemindersEnabledChange, Modifier.testTag("reminder-enabled"))
                     }
+                    Column(Modifier.alpha(if (state.enabled) 1f else .45f), verticalArrangement = Arrangement.spacedBy(QztcSpacing.sm)) {
                     HorizontalDivider(color = colors.line)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("节假日也提醒", Modifier.weight(1f), style = QztcTypography.body, color = colors.ink)
-                        Switch(state.remindOnHolidays, onRemindOnHolidaysChange, Modifier.testTag("course-remind-holidays"))
+                        Switch(state.remindOnHolidays, onRemindOnHolidaysChange, Modifier.testTag("course-remind-holidays"), enabled = state.enabled)
                     }
                     Text("开启后，校历放假日仍按原课程提醒；调休按实际课表提醒。", style = QztcTypography.meta, color = colors.mut)
                     Text("默认提前时间", style = QztcTypography.body, color = colors.ink)
-                    ReminderMinuteChoices(state.minutes, onReminderMinutesChange)
+                    ReminderMinuteChoices(state.minutes, onReminderMinutesChange, enabled = state.enabled)
                     Text("未单独设置的课程使用这个时间", style = QztcTypography.meta, color = colors.mut)
                     HorizontalDivider(color = colors.line)
                     Text("显示方式", style = QztcTypography.body, color = colors.ink)
                     QztcReminderModeOptions(state.displayMode==ReminderDisplayMode.SCREEN_POPUP,
                         {onReminderDisplayModeChange(if(it)ReminderDisplayMode.SCREEN_POPUP else ReminderDisplayMode.NOTIFICATION_BAR)},
                         ReminderPreviewState(testState.running,testState.message,testState.needsSystemSettings,testState.needsConfirmation),
-                        onTestReminder,onSystemReminderSettings)
+                        onTestReminder,onSystemReminderSettings,enabled=state.enabled)
                     HorizontalDivider(color = colors.line)
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("已加入提醒的课程", style = QztcTypography.section, color = colors.ink)
                         Text(semesterLabel, style = QztcTypography.meta, color = colors.mut)
                     }
-                    if (excluded.isNotEmpty()) TextButton(onClick = { showAddCourses = !showAddCourses }) {
+                    if (excluded.isNotEmpty()) TextButton(enabled = state.enabled, onClick = { showAddCourses = !showAddCourses }) {
                         Text(if (showAddCourses) "收起" else "添加课程")
                     }
                 }
@@ -107,7 +112,7 @@ fun ReminderSettingsScreen(
             if (showAddCourses) excluded.forEach { course ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(course.name, Modifier.weight(1f), style = QztcTypography.body, color = colors.mut)
-                    TextButton(onClick = { onSaveCourseReminder(course.id, null, state.messages[course.id]) }) { Text("加入提醒") }
+                    TextButton(enabled = state.enabled, onClick = { onSaveCourseReminder(course.id, null, state.messages[course.id]) }) { Text("加入提醒") }
                 }
             }
             included.forEachIndexed { index, course ->
@@ -119,6 +124,7 @@ fun ReminderSettingsScreen(
                     })
                 if (index < included.lastIndex) HorizontalDivider(color = colors.line)
             }
+                    }
                 }
             }
         }
@@ -130,12 +136,14 @@ fun ReminderSettingsScreen(
 private fun DailyAgendaOptions(settings: DailyAgendaSettings, onChange: (DailyAgendaSettings) -> Unit, onPreview: () -> Unit, academicPluginInstalled: Boolean, onPluginMarket: () -> Unit) {
     val colors = LocalQztcColors.current
     var choosingTime by remember { mutableStateOf(false) }
+    LaunchedEffect(settings.enabled) { if (!settings.enabled) choosingTime = false }
     ReminderSettingsSection("每日待办") {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("每天汇总当天已加入的安排", Modifier.weight(1f), style = QztcTypography.body)
             Switch(settings.enabled, { onChange(settings.copy(enabled = it)) }, Modifier.testTag("daily-agenda-enabled"))
         }
-        TextButton(onClick = { choosingTime = true }, modifier = Modifier.testTag("daily-agenda-time")) {
+        Column(Modifier.alpha(if (settings.enabled) 1f else .45f), verticalArrangement = Arrangement.spacedBy(QztcSpacing.sm)) {
+        TextButton(enabled = settings.enabled, onClick = { choosingTime = true }, modifier = Modifier.testTag("daily-agenda-time")) {
             Text("通知时间  %02d:%02d".format(settings.hour, settings.minute))
         }
         Row(Modifier.fillMaxWidth()) {
@@ -143,11 +151,11 @@ private fun DailyAgendaOptions(settings: DailyAgendaSettings, onChange: (DailyAg
                 val day = index + 1
                 FilterChip(day in settings.weekdays, onClick = {
                     onChange(settings.copy(weekdays = if (day in settings.weekdays) settings.weekdays - day else settings.weekdays + day))
-                }, label = { Text(label) }, modifier = Modifier.weight(1f),
+                }, enabled = settings.enabled, label = { Text(label) }, modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(4.dp))
             }
         }
-        if (!academicPluginInstalled) TextButton(onClick = onPluginMarket) { Text("赛事与考证安排 · 前往插件市场") }
+        if (!academicPluginInstalled) TextButton(enabled = settings.enabled, onClick = onPluginMarket) { Text("赛事与考证安排 · 前往插件市场") }
         if (settings.weekdays.isEmpty()) Text("请选择至少一天", style = QztcTypography.meta, color = colors.warn)
         listOf<Triple<String, Boolean, (Boolean) -> Unit>>(
             Triple("课程表与日历活动", settings.includeActivities, { value: Boolean -> onChange(settings.copy(includeActivities = value)) }),
@@ -157,23 +165,24 @@ private fun DailyAgendaOptions(settings: DailyAgendaSettings, onChange: (DailyAg
         ).filter { it.first != "赛事与考证安排" || academicPluginInstalled }.forEach { (title, checked, change) ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = QztcTypography.body)
-                Switch(checked, change)
+                Switch(checked, change, enabled = settings.enabled)
             }
         }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             ReminderDisplayMode.entries.forEachIndexed { index, mode ->
-                SegmentedButton(settings.displayMode == mode, { onChange(settings.copy(displayMode = mode)) },
+                SegmentedButton(settings.displayMode == mode, { onChange(settings.copy(displayMode = mode)) }, enabled = settings.enabled,
                     shape = SegmentedButtonDefaults.itemShape(index, ReminderDisplayMode.entries.size),
                     label = { Text(if (mode == ReminderDisplayMode.SCREEN_POPUP) "弹窗" else "通知栏") })
             }
         }
         Text("通知最多展开 ${settings.maximumItems} 项", style = QztcTypography.meta)
         Slider(settings.maximumItems.toFloat(), { onChange(settings.copy(maximumItems = it.toInt())) },
-            valueRange = 1f..30f, steps = 28)
+            enabled = settings.enabled, valueRange = 1f..30f, steps = 28)
         Text("只汇总已加入的安排，取消后不再提醒。系统节电可能延迟通知。", style = QztcTypography.meta, color = colors.mut)
-        TextButton(onClick = onPreview, modifier = Modifier.testTag("daily-agenda-preview")) { Text("预览今日通知") }
+        TextButton(enabled = settings.enabled, onClick = onPreview, modifier = Modifier.testTag("daily-agenda-preview")) { Text("预览今日通知") }
+        }
     }
-    if (choosingTime) {
+    if (choosingTime && settings.enabled) {
         cn.qztc.timetable.core.ui.theme.QztcTimePicker(java.time.LocalTime.of(settings.hour, settings.minute),
             onDismiss = { choosingTime = false }) { time ->
             onChange(settings.copy(hour = time.hour, minute = time.minute)); choosingTime = false
@@ -198,7 +207,7 @@ private fun ReminderCourseRow(course: Course, state: CourseReminderUiState, expa
     val overrideMinutes = state.overrides[course.id]
     val savedMessage = state.messages[course.id].orEmpty()
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(enabled = state.enabled, onClick = onToggle).padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(course.name, style = QztcTypography.courseTitle, color = colors.ink)
                 Text(if (overrideMinutes == null) "跟随默认 · ${state.minutes} 分钟" else "提前 $overrideMinutes 分钟",
@@ -207,7 +216,7 @@ private fun ReminderCourseRow(course: Course, state: CourseReminderUiState, expa
             }
             Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "收起课程设置" else "展开课程设置", tint = colors.mut)
         }
-        if (expanded) {
+        if (expanded && state.enabled) {
             var minutes by rememberSaveable(course.id, overrideMinutes) { mutableStateOf(overrideMinutes ?: -1) }
             var message by rememberSaveable(course.id, savedMessage) { mutableStateOf(savedMessage) }
             Column(Modifier.padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

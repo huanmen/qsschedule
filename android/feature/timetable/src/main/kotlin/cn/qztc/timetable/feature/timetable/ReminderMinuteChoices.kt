@@ -11,30 +11,31 @@ import androidx.compose.ui.unit.dp
 
 /** -1 follows the default; 0 disables only this course. */
 @Composable
-fun ReminderMinuteChoices(value: Int, onChange: (Int) -> Unit, allowDefault: Boolean = false) {
+fun ReminderMinuteChoices(value: Int, onChange: (Int) -> Unit, allowDefault: Boolean = false, enabled: Boolean = true) {
     var showCustom by rememberSaveable { mutableStateOf(false) }
     var customText by rememberSaveable { mutableStateOf("") }
     val presets = listOf(5, 10, 15)
     Column {
         if (allowDefault) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(value == -1, { onChange(-1) }, label = { Text("跟随默认") })
-            FilterChip(value == 0, { onChange(0) }, label = { Text("本课不提醒") })
+            FilterChip(value == -1, { onChange(-1) }, enabled = enabled, label = { Text("跟随默认") })
+            FilterChip(value == 0, { onChange(0) }, enabled = enabled, label = { Text("本课不提醒") })
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             presets.forEach { minutes ->
-                FilterChip(value == minutes, { onChange(minutes) }, modifier = Modifier.weight(1f),
+                FilterChip(value == minutes, { onChange(minutes) }, enabled = enabled, modifier = Modifier.weight(1f),
                     label = { Text("$minutes 分钟", style = MaterialTheme.typography.labelSmall, maxLines = 1) })
             }
             FilterChip(value > 0 && value !in presets, {
                 customText = value.takeIf { it > 0 }?.toString().orEmpty()
                 showCustom = true
-            }, modifier = Modifier.weight(1f), label = {
+            }, enabled = enabled, modifier = Modifier.weight(1f), label = {
                 Text("自定义", style = MaterialTheme.typography.labelSmall, maxLines = 1)
             })
         }
         if (value > 0 && value !in presets) Text("自定义：提前 $value 分钟", style = MaterialTheme.typography.bodySmall)
     }
-    if (showCustom) {
+    LaunchedEffect(enabled) { if (!enabled) showCustom = false }
+    if (showCustom && enabled) {
         val minutes = customText.toIntOrNull()
         val valid = minutes != null && minutes in 1..60
         AlertDialog(

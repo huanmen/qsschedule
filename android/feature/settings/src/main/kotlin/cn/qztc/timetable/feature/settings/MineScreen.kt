@@ -219,9 +219,9 @@ fun MineScreen(
                 IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Outlined.Settings, "设置", tint = colors.ink) }
             })
             LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                if (state.activeSemester != null) item {
+                item {
                     SemesterProgressCard(state.activeSemester, state.teachingWeeks, "导入课表", onEduImportClick,
-                        onSemesterSwitch = { semesterSheetOpen = true })
+                        onSemesterSwitch = if (state.activeSemester != null) ({ semesterSheetOpen = true }) else null)
                 }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {

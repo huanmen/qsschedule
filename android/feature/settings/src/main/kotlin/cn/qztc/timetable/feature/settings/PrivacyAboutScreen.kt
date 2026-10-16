@@ -45,7 +45,7 @@ fun PrivacyAboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             AboutSection("关于应用", "泉师课程表帮助你查看课程、安排活动和管理学习提醒。本项目由个人开发，与学校官方无隶属关系。")
             AboutSection("数据与存储", "课表、活动和设置保存在本机。选择保存的教务账号及成绩缓存会加密存储，教务认证信息仅用于访问学校服务，不上传到项目服务器。")
             AboutSection("权限与服务", "通知用于课程和活动提醒；定位用于校园地图；无障碍权限仅供主动启用的广告辅助使用。相关权限按需申请，可在系统设置中关闭。第三方服务的说明会在对应功能中提供。")
-            AboutSection("联网与插件", "公告、校历、更新及插件资料通过网络获取。下载完成后，会向项目服务器发送随机安装标识、包类型和版本号，用于去重统计。使用 AI 功能时，你填写的素材会发送至自行配置的模型服务。")
+            AboutSection("联网与插件", "公告、校历、更新及插件资料通过网络获取。下载完成后，会向项目服务器发送随机安装标识、包类型和版本号，用于去重统计。")
             AboutSection("数据管理", "你可以在应用中修改或删除已保存的资料。导出和分享的文件由你自行管理，分享前请检查其中的个人信息；清除应用数据会移除本机保存的资料。")
             GlassSurface(role = GlassRole.CONTENT, modifier = Modifier.fillMaxWidth().clickable { open() }) {
                 Row(Modifier.fillMaxWidth().padding(QztcSpacing.xl), verticalAlignment = Alignment.CenterVertically) {
