@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 ROOT = Path(os.environ.get("QSS_DATA", "/var/lib/qsschedule"))
 ROOT.mkdir(parents=True, exist_ok=True)
@@ -165,16 +165,17 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 return self.send_json({"error": "not published"}, 503)
         if path.startswith("/downloads/"):
-            name = path.removeprefix("/downloads/")
-            if not re.fullmatch(r"qsschedule-[0-9A-Za-z._-]+\.apk", name) or not (ROOT / "downloads" / name).is_file():
+            name = unquote(path.removeprefix("/downloads/"))
+            if not re.fullmatch(r"(?:泉师课程表|qsschedule)-[0-9A-Za-z._-]+\.apk", name) or not (ROOT / "downloads" / name).is_file():
                 return self.send_json({"error": "not found"}, 404)
             if self.command == "GET" and not self.headers.get("Range"):
                 with database() as db:
                     db.execute("INSERT INTO requests VALUES (?,?,1) ON CONFLICT(file,day) DO UPDATE SET count=count+1", (name, datetime.now(timezone.utc).date().isoformat()))
             self.send_response(200)
-            self.send_header("X-Accel-Redirect", "/qsschedule-internal/" + name)
+            self.send_header("X-Accel-Redirect", "/qsschedule-internal/" + quote(name, safe=""))
             self.send_header("Content-Type", "application/vnd.android.package-archive")
-            self.send_header("Content-Disposition", 'attachment; filename="' + name + '"')
+            download_name = name.replace("qsschedule-", "泉师课程表-", 1)
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(download_name, safe=""))
             self.end_headers()
             return
         self.send_json({"error": "not found"}, 404)

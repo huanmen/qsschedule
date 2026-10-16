@@ -96,6 +96,8 @@
 
 Windows 使用 `gradlew.bat`。通过 `ANDROID_HOME` 或本地 `local.properties` 配置 SDK；不要提交本机路径。地图定位 SDK 的 Key 使用 `AMAP_LOCATION_KEY` 环境变量或本地 Gradle 属性配置，仓库不提供 Key。
 
+构建后运行 `pwsh -File scripts/Export-Apk.ps1`（在仓库根目录），统一导出为 `output/泉师课程表-<版本号>-release.apk`；调试包使用 `-BuildType debug`。公开安装包以“泉师课程表”为名称前缀。
+
 Release 构建沿用现有本地签名，以兼容已安装版本。签名文件不在仓库中，新机器会生成不同签名，不能用自行构建的 APK 覆盖原签名版本。自行分发时应配置并妥善保管自己的签名。
 
 ## 隐私和第三方内容

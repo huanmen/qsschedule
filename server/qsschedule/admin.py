@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(os.environ.get("QSS_DATA", "/var/lib/qsschedule"))
 
@@ -63,8 +64,8 @@ if __name__ == "__main__":
         if args.command == "announcements":
             validate_announcements(data)
         else:
-            name = data["apkUrl"].removeprefix("https://huanmen.com.cn/qsschedule/downloads/")
-            if not re.fullmatch(r"qsschedule-[0-9A-Za-z._-]+\.apk", name):
+            name = unquote(data["apkUrl"].removeprefix("https://huanmen.com.cn/qsschedule/downloads/"))
+            if not re.fullmatch(r"(?:泉师课程表|qsschedule)-[0-9A-Za-z._-]+\.apk", name):
                 raise ValueError("APK must use this server download route")
             apk = ROOT / "downloads" / name
             digest = hashlib.sha256()
