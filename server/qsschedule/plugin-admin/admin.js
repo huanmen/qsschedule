@@ -8,7 +8,7 @@ const statusName = {published:'已发布',draft:'草稿',unpublished:'已下架'
 function notice(message, error=false) { $('notice').textContent=message; $('notice').className='visible'+(error?' error':''); clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>$('notice').className='',error?10000:4500); }
 async function api(path, body, raw=false) {
   const response=await fetch(path,body===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json','X-QSS-CSRF':state.csrf},body:raw?body:JSON.stringify(body)});
-  const value=await response.json(); if(!response.ok) throw Error(value.error||'操作失败'); return value;
+  const value=await response.json(); if(response.status===401&&location.pathname.startsWith('/qsschedule/manage/')) location.assign('/qsschedule/manage/login'); if(!response.ok) throw Error(value.error||'操作失败'); return value;
 }
 function on(id, event, fn) { $(id).addEventListener(event,async e=>{try{await fn(e);}catch(error){notice(error.message,true);}}); }
 function button(text,fn,cls='') {const b=document.createElement('button'); b.type='button'; b.textContent=text;b.className=cls;b.addEventListener('click',async()=>{try{await fn();}catch(e){notice(e.message,true);}});return b;}
@@ -36,7 +36,7 @@ function renderList() {
   $('count').textContent=`${rows.length} / ${state.plugins.length}`;
   for(const row of rows) {
     const b=button('',()=>select(row),'plugin-row'+(active?.id===row.id?' selected':''));
-    b.append(el('strong',row.draft.name),el('p',row.draft.summary));const foot=el('div',undefined,'row-foot');foot.append(el('span',statusName[row.status],'badge '+row.status),el('span',`v${row.published?.version??row.draft.version}`,'mono'));b.append(foot);box.append(b);
+    b.append(el('strong',row.draft.name),el('p',row.draft.summary));const foot=el('div',undefined,'row-foot');foot.append(el('span',statusName[row.status],'badge '+row.status),el('span',`v${row.published?.version??row.draft.version}`,'mono'));b.append(foot);if(state.downloads)b.append(el('p',`完成下载 ${state.downloads[row.id]||0} 次`));box.append(b);
   }
   if(!rows.length)box.append(el('p','没有符合条件的插件。','no-records'));
 }

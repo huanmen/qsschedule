@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 import plugin_store as store
+from download_stats import report
 
 ASSETS = Path(__file__).with_name('plugin-admin')
 
@@ -52,6 +53,11 @@ class AdminHandler(BaseHTTPRequestHandler):
             return
         path = urlsplit(self.path).path
         query = parse_qs(urlsplit(self.path).query)
+        if path == '/api/download-stats':
+            try:
+                return self.respond(report(self.server.root, query.get('days', ['30'])[0]))
+            except ValueError as error:
+                return self.respond({'error': str(error)}, 400)
         if path == '/api/package':
             import re
             digest = query.get('sha', [''])[0]
@@ -70,6 +76,9 @@ class AdminHandler(BaseHTTPRequestHandler):
             return self.respond(dict(plugins=store.records(self.server.root), audit=store.audit(self.server.root),
                                      csrf=self.server.csrf, publicBase=self.server.public_base, dataDirectory=str(self.server.root)))
         files = {'/': ('index.html', 'text/html; charset=utf-8'), '/admin.js': ('admin.js', 'text/javascript; charset=utf-8'), '/admin.css': ('admin.css', 'text/css; charset=utf-8')}
+        files.update({'/stats': ('stats.html', 'text/html; charset=utf-8'),
+                      '/stats.js': ('stats.js', 'text/javascript; charset=utf-8'),
+                      '/stats.css': ('stats.css', 'text/css; charset=utf-8')})
         if path in files:
             filename, mime = files[path]
             return self.respond((ASSETS / filename).read_bytes(), mime=mime)

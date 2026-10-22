@@ -10,6 +10,25 @@ class AdSkipDrawnSplashTest {
     private val rule = AdSkipGenericRules.rule(pkg)
     private val screen = AdSkipBounds(0, 0, 1280, 2772)
     private val button = AdSkipBounds(65, 2476, 182, 2593)
+    @Test fun observedFloatingOverlayTargetsOnlyIndependentCloseBranch() {
+        val nodes = deviceTree("/adskip/sport-floating-20261018.xml")
+        val native = AdSkipRules.bundled.rules.single { it.id == AdSkipDrawnSplash.NATIVE_ID }
+        assertTrue(AdSkipMatcher.matchesActivity(native, ""))
+        val target = AdSkipMatcher.findTarget(native, nodes)!!
+        assertEquals(AdSkipBounds(1199, 605, 1248, 670), nodes[target].bounds)
+        assertTrue(AdSkipSafety.allowsTarget(nodes, target))
+        for (text in listOf("关闭悬浮球可继续浏览应用", "点击到落地页或三方APP")) {
+            val index = nodes.indexOfFirst { it.text == text }
+            assertNull(AdSkipMatcher.findTarget(native, nodes.toMutableList().apply { set(index, nodes[index].copy(text="普通内容")) }))
+        }
+        for (changed in listOf(nodes[target].copy(packageName="com.other.app"),
+            nodes[target].copy(bounds=AdSkipBounds(963,569,1080,686)),
+            nodes[target].copy(visible=false), nodes[target].copy(className="android.widget.TextView"))) {
+            assertNull(AdSkipMatcher.findTarget(native, nodes.toMutableList().apply { set(target, changed) }))
+        }
+        val virtual = nodes.indexOfFirst { it.description == "virtualNode" }
+        assertNull(AdSkipMatcher.findTarget(native, nodes.toMutableList().apply { set(virtual, nodes[virtual].copy(description="ordinary-page")) }))
+    }
     private fun tree(): List<AdSkipNode> {
         fun n(type: String, parent: Int?, index: Int, count: Int, bounds: AdSkipBounds = screen,
             text: String? = null, description: String? = null, id: String? = null) =

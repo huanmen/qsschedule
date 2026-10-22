@@ -97,6 +97,10 @@ internal fun GradeHistoryLoader(state: GradeHistoryState, credentials: QnuSavedC
 @Composable
 internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () -> Unit) {
     val colors = LocalQztcColors.current
+    var checkNetwork by remember { mutableStateOf(false) }
+    if (checkNetwork) cn.qztc.timetable.qnu.CampusNetworkDialog(onDismiss = { checkNetwork = false }, onReady = {
+        checkNetwork = false; state.refresh()
+    })
     val groups = remember(state.snapshot) { QnuGradeSemesters.group(state.snapshot?.records.orEmpty()) }
     val defaultId = remember(groups.map { it.id }) { QnuGradeSemesters.defaultExpanded(groups) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -161,7 +165,7 @@ internal fun GradeHistoryPanel(state: GradeHistoryState, onConfigureAccount: () 
                             Text("${visibleRecords.size} 条成绩", style = QztcTypography.meta, color = colors.accentDeep)
                         }
                     }
-                    IconButton(onClick = { state.refresh() }, enabled = !state.running && !state.needsLogin) {
+                    IconButton(onClick = { checkNetwork = true }, enabled = !state.running && !state.needsLogin) {
                         if (state.running) CircularProgressIndicator(Modifier.size(21.dp), strokeWidth = 2.dp, color = colors.accentDeep)
                         else Icon(Icons.Outlined.Refresh, "刷新全部成绩", tint = colors.accentDeep)
                     }

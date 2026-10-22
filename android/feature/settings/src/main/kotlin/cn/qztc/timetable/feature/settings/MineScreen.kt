@@ -143,6 +143,7 @@ data class MineUiState(
     val periodScheme: PeriodScheme? = null,
     val semesters: List<MineSemesterOption> = emptyList(),
     val updateLabel: String = "检查最新版本",
+    val currentVersionName: String = "",
     val teachingWeeks: Int? = null,
 )
 
@@ -213,7 +214,11 @@ fun MineScreen(
         Column(modifier.fillMaxSize().background(colors.solid2).statusBarsPadding()) {
             QztcPageTopBar("我的", centeredTitle = true, navigation = {
                 IconButton(onClick = onAnnouncementsClick) {
+                    Box {
                     Icon(Icons.Outlined.Notifications, if (unreadAnnouncements > 0) "公告 · $unreadAnnouncements 条未读" else "公告", tint = colors.ink)
+                    if (unreadAnnouncements > 0) Box(Modifier.size(7.dp).align(Alignment.TopEnd)
+                        .background(androidx.compose.ui.graphics.Color(0xFFE34D59), androidx.compose.foundation.shape.CircleShape))
+                    }
                 }
             }, actions = {
                 IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Outlined.Settings, "设置", tint = colors.ink) }
@@ -300,7 +305,8 @@ fun MineScreen(
         ),
         "数据" to listOf(
             SettingItem("数据与存储", "快照、导出文件与可清理缓存", Icons.Outlined.Storage, onClick = onStorageClick),
-            SettingItem("检查更新", "检查并安装新版本", Icons.Outlined.SystemUpdate, value = state.updateLabel, onClick = onCheckUpdateClick),
+            SettingItem("检查更新", if (state.updateLabel == "检查最新版本") "检查并安装新版本" else state.updateLabel,
+                Icons.Outlined.SystemUpdate, value = state.currentVersionName, onClick = onCheckUpdateClick),
             SettingItem("隐私与关于", "本地优先与版本信息", Icons.Outlined.Info, onClick = onPrivacyAboutClick),
         ),
     )

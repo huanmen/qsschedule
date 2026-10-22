@@ -57,8 +57,8 @@ class ReminderSettingsAcceptanceTest {
         compose.onNodeWithText("仅通知栏").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(ReminderDisplayMode.NOTIFICATION_BAR, mode) }
         compose.onNodeWithText("系统通知设置").assertDoesNotExist()
-        compose.onNodeWithTag("reminder-settings-list").performScrollToNode(hasText("已加入提醒的课程"))
-        compose.onNodeWithText("已加入提醒的课程").assertIsDisplayed()
+        compose.onNodeWithTag("reminder-settings-list").performScrollToNode(hasText("自定义课程提醒设置"))
+        compose.onNodeWithText("自定义课程提醒设置").assertIsDisplayed()
         screenshot("reminder-settings-0.3.3.png")
     }
 
@@ -77,7 +77,8 @@ class ReminderSettingsAcceptanceTest {
                 state.value = state.value.copy(overrides = minutes?.let { mapOf(id to it) } ?: emptyMap())
             })
         } }
-        compose.onNodeWithTag("reminder-settings-list").performScrollToNode(hasText("合成课程"))
+        compose.onNodeWithTag("reminder-settings-list").performScrollToNode(hasText("自定义课程提醒设置"))
+        compose.onNodeWithText("自定义课程提醒设置").performClick()
         compose.onNodeWithText("合成课程").performClick()
         compose.onAllNodesWithText("自定义").onLast().performScrollTo().performClick()
         compose.onNodeWithText("提前多少分钟").performTextReplacement("25")

@@ -53,7 +53,7 @@ object AdSkipStore {
         prefs(context).edit().putString("feedback_template", value).apply()
     }
     fun foregroundEnabled(context: Context) = prefs(context).getBoolean("foreground", true)
-    fun splashOnly(context: Context) = prefs(context).getBoolean("splash_only", true)
+    fun splashOnly(context: Context) = prefs(context).getBoolean("splash_only", false)
     fun setSplashOnly(context: Context, value: Boolean) { prefs(context).edit().putBoolean("splash_only", value).apply() }
     fun pluginNeedsUpdate(context: Context, latest: Int = 2) = installed(context) && prefs(context).getInt("plugin_version", 1) < latest
     fun updatePlugin(context: Context, version: Int = 2) { prefs(context).edit().putInt("plugin_version", version).apply() }

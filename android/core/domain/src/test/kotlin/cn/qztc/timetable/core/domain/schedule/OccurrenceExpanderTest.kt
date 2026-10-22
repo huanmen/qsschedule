@@ -118,6 +118,39 @@ class OccurrenceExpanderTest {
     }
 
     @Test
+    fun `move takes precedence over duplicate makeup at the same destination`() {
+        val move = ScheduleException(
+            id = "move", courseId = "c1", type = ExceptionType.MOVE,
+            original = SlotRef(week = 2, weekday = 1, periodStart = 1, periodEnd = 2),
+            replacement = SlotRef(week = 3, weekday = 4, periodStart = 7, periodEnd = 8, room = "新教室"),
+            sourceType = SourceType.QNU_EDU,
+        )
+        val duplicateMakeup = ScheduleException(
+            id = "makeup", courseId = "c1", type = ExceptionType.MAKEUP,
+            replacement = SlotRef(week = 3, weekday = 4, periodStart = 7, periodEnd = 8),
+            sourceType = SourceType.QNU_EDU,
+        )
+        val independentMakeup = ScheduleException(
+            id = "independent", courseId = "c1", type = ExceptionType.MAKEUP,
+            replacement = SlotRef(week = 5, weekday = 6, periodStart = 9, periodEnd = 10),
+            sourceType = SourceType.QNU_EDU,
+        )
+        val state = TimetableState(
+            listOf(course("c1")),
+            listOf(meeting("c1", weeks = (1..8).toList())),
+            listOf(move, duplicateMakeup, independentMakeup),
+        )
+
+        val occurrences = OccurrenceExpander.expand(semester, state)
+        val destination = occurrences.filter { it.week == 3 && it.weekday == 4 && it.periodStart == 7 }
+        assertEquals(1, destination.size)
+        assertEquals(OccurrenceState.MOVED_IN, destination.single().state)
+        assertEquals("新教室", destination.single().room)
+        assertEquals(OccurrenceState.CANCELLED, occurrences.single { it.week == 2 }.state)
+        assertEquals(1, occurrences.count { it.state == OccurrenceState.MAKEUP && it.week == 5 })
+    }
+
+    @Test
     fun `makeup adds occurrence`() {
         val makeup = ScheduleException(
             id = "e1", courseId = "c1", type = ExceptionType.MAKEUP,

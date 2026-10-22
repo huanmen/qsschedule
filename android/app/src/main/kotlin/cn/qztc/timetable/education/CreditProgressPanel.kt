@@ -67,12 +67,19 @@ internal fun CreditProgressPanel(credentials: QnuSavedCredentials?, onConfigureA
     val colors = LocalQztcColors.current
     var snapshot by remember(credentials) { mutableStateOf(initialSnapshot) }
     var running by remember { mutableStateOf(false) }
+    var checkNetwork by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
+    if (checkNetwork) cn.qztc.timetable.qnu.CampusNetworkDialog(onDismiss = { checkNetwork = false }, onReady = {
+        checkNetwork = false; running = true; attempt++
+    })
     var status by remember { mutableStateOf("") }
     var adviceOpen by remember { mutableStateOf(false) }
     var expandedGroups by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var toastMessage by remember { mutableStateOf("") }
-    var progress by remember { mutableStateOf<QnuStudyProgress?>(initialSnapshot?.progress()) }
+    var progress by remember { mutableStateOf<QnuStudyProgress?>(null) }
+    val cross = remember(progress) { progress?.groups?.firstOrNull { it.name.contains("跨学科") } }
+    val art = remember(progress) { progress?.groups?.firstOrNull { it.name.contains("艺术") } }
+    val electiveTotal = cross?.earned?.let { c -> art?.earned?.let { c + it } }
     LaunchedEffect(snapshot) { progress = withContext(Dispatchers.Default) { snapshot?.progress() } }
     LaunchedEffect(status, running) {
         if (status.isNotBlank()) { toastMessage = status; delay(3500); toastMessage = "" }
@@ -88,7 +95,7 @@ internal fun CreditProgressPanel(credentials: QnuSavedCredentials?, onConfigureA
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("学分进度", Modifier.weight(1f), style = QztcTypography.pageTitle, color = colors.ink)
-                        IconButton(onClick = { running = true; attempt++; status = "正在获取修读进程…" }, enabled = credentials != null && !running) {
+                        IconButton(onClick = { checkNetwork = true }, enabled = credentials != null && !running) {
                             if (running) CircularProgressIndicator(Modifier.size(21.dp), strokeWidth = 2.dp, color = colors.accentDeep)
                             else Icon(Icons.Outlined.Refresh, "刷新学分", tint = colors.accentDeep)
                         }
@@ -116,18 +123,15 @@ internal fun CreditProgressPanel(credentials: QnuSavedCredentials?, onConfigureA
                                 val gap = if (creditGap != null && creditGap > 0) "尚差 ${creditNumber(creditGap)} 学分" else if (countGap != null && countGap > 0) "尚差 $countGap 门" else "待完成"
                                 Text("${g.name} $gap", style = QztcTypography.compact, color = colors.mut)
                             }
-                            progress?.groups?.firstOrNull { it.name.contains("跨学科") }?.let { cross ->
-                                val requirement = cross.required?.takeIf { it > 0 }?.let { " / ${creditNumber(it)}" }.orEmpty()
-                                Text("跨学科 ${creditNumber(cross.earned)}$requirement 学分", Modifier.padding(top = 8.dp), style = QztcTypography.meta, color = colors.accentDeep)
+                            if (cross != null || art != null) {
+                                Text("选修合计 ${creditNumber(electiveTotal)} / 7 学分", Modifier.padding(top = 8.dp), style = QztcTypography.meta, color = colors.accentDeep)
                             }
                             progress?.groups?.firstOrNull { it.name.contains("艺术") }?.let { art ->
                                 Text("其中艺术 ${creditNumber(art.earned)} / ${creditNumber(art.required)}", style = QztcTypography.compact, color = colors.mut)
                             }
                         }
                     }
-                    val cross = progress?.groups?.firstOrNull { it.name.contains("跨学科") }
-                    val art = progress?.groups?.firstOrNull { it.name.contains("艺术") }
-                    if (cross?.earned != null && art?.earned != null && (cross.earned!! < 7 || art.earned!! < 2)) {
+                    if (cross != null || art != null) {
                         Text("选修学分解读与选课建议 ›", style = QztcTypography.meta, color = colors.accentDeep,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp).clickable { adviceOpen = true }.padding(vertical = 6.dp))
                     }
@@ -154,7 +158,7 @@ internal fun CreditProgressPanel(credentials: QnuSavedCredentials?, onConfigureA
             progress?.groups.orEmpty().forEachIndexed { index, group ->
                 val groupKey = "credit:$index:${group.id}"
                 val expanded = groupKey in expandedGroups
-                item(key = groupKey) {
+                item(key = groupKey, contentType = "credit-group") {
                 val shape = if (expanded && group.courses.isNotEmpty()) RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp) else RoundedCornerShape(8.dp)
                 Column(Modifier.fillMaxWidth().padding(top = 10.dp).background(colors.solid, shape).clickable(remember { MutableInteractionSource() }, indication = null) {
                     expandedGroups = if (expanded) expandedGroups - groupKey else expandedGroups + groupKey
@@ -180,7 +184,7 @@ internal fun CreditProgressPanel(credentials: QnuSavedCredentials?, onConfigureA
                     }
                 }
                 }
-                if (expanded) itemsIndexed(group.courses, key = { courseIndex, _ -> "$groupKey:course:$courseIndex" }) { courseIndex, course ->
+                if (expanded) itemsIndexed(group.courses, key = { courseIndex, _ -> "$groupKey:course:$courseIndex" }, contentType = { _, _ -> "credit-course" }) { courseIndex, course ->
                     val shape = if (courseIndex == group.courses.lastIndex) RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp) else RoundedCornerShape(0.dp)
                     Column(Modifier.fillMaxWidth().background(colors.solid, shape).padding(horizontal = 14.dp)) {
                             HorizontalDivider(color = colors.line)
@@ -234,12 +238,11 @@ internal fun electiveRecommendation(total: Double, art: Double): String {
     val totalGap = (7 - total).coerceAtLeast(0.0)
     val artGap = (2 - art).coerceAtLeast(0.0)
     if (total >= 7 && art >= 2) return "选修学分已达标，无需补选。"
-    if (total + artGap > 8) return "先核对艺术课程归类或替换认定，继续加课会超过 8 学分。"
     if (totalGap <= 2 && artGap <= 2) {
         val amount = maxOf(totalGap, artGap)
-        return "已获跨学科 ${creditNumber(total)} 分，其中艺术 ${creditNumber(art)} 分。优先选一门 ${creditNumber(amount)} 学分的${if (artGap > 0) "艺术" else "其他"}课；没有对应课程时拆成 1 分课。"
+        return "还需补足选修 ${creditNumber(totalGap)} 分、艺术 ${creditNumber(artGap)} 分。优先选一门 ${creditNumber(amount)} 学分的${if (artGap > 0) "艺术" else "其他"}课；也可用 1 学分课程组合补足。"
     }
-    return "尚差跨学科 ${creditNumber(totalGap)} 分，其中艺术 ${creditNumber(artGap)} 分。优先补艺术类，再补其他课；尽量选择 2 分课减少门数，分学期完成。线上学分是否已达 4 分上限需按实际授课方式核对。"
+    return "还需补足选修 ${creditNumber(totalGap)} 分、艺术 ${creditNumber(artGap)} 分。艺术课可以同时补足总学分缺口；每学期最多修 4 学分，分学期完成。纯线上课程最多计入 4 学分。"
 }
 
 internal fun creditCourseStatus(status: String?): String = when (status) {

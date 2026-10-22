@@ -38,6 +38,14 @@ class WeekRuleTextTest {
     }
 
     @Test
+    fun `short term chinese week list and range`() {
+        assertEquals(listOf(16, 17), WeekRuleText.parse("第16、17周")!!.weeks)
+        assertEquals(listOf(16, 17), WeekRuleText.parse("第十六、十七周")!!.weeks)
+        assertEquals(listOf(16, 17), WeekRuleText.parse("第壹拾陆、壹拾柒周")!!.weeks)
+        assertEquals(listOf(16, 17), WeekRuleText.parse("十六至十七周")!!.weeks)
+    }
+
+    @Test
     fun `raw text preserved`() {
         assertEquals("3-17周单", WeekRuleText.parse("3-17周单")!!.rawText)
     }

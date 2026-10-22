@@ -82,6 +82,7 @@ fun UpcomingChangesScreen(
             QnuImportScreen(
                 savedCredentials = savedCredentials, onBack = onBack,
                 syncOnly = true, automaticCheck = true,
+                checkSemester = semester,
                 onCheckFailed = { failure ->
                     checking = false; busy = false; message = failure
                     loginNeeded = failure.contains("登录") || failure.contains("账号") || failure.contains("验证码")
@@ -93,7 +94,7 @@ fun UpcomingChangesScreen(
                             val hint = candidate.semesterHint
                             if (candidate.hasErrors) message = "通知读取失败，请重试"
                             else if (hint?.year != semester.schoolYear || hint.term != semester.term) {
-                                message = "请先导入最新学期"
+                                message = "读取的通知与所选学期不一致，请重试"
                             } else {
                                 reload()
                                 val merged = UpcomingScheduleChanges.merge(semester, current, candidate.state, periods, LocalDateTime.now(), includeExpired = true)
@@ -194,19 +195,14 @@ fun UpcomingChangesDialog(
     checkOnOpen: Boolean = true,
 ) {
     val colors = LocalQztcColors.current
-    var latestSemester by remember { mutableStateOf<Semester?>(null) }
     var resultReady by remember { mutableStateOf(!checkOnOpen) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        latestSemester = repository.semesters().filter { repository.state(it.id).courses.isNotEmpty() }
-            .maxWithOrNull(compareBy({ it.schoolYear }, { it.term.ordinal })) ?: semester
-    }
     val content: @Composable () -> Unit = {
-        latestSemester?.let { latest -> UpcomingChangesScreen(
-            semester = latest, repository = repository, onBack = onDismiss, onLogin = onLogin,
+        UpcomingChangesScreen(
+            semester = semester, repository = repository, onBack = onDismiss, onLogin = onLogin,
             onApplied = onApplied, savedCredentials = savedCredentials, checkOnOpen = checkOnOpen && !resultReady,
             onResultReady = { resultMessage = it; resultReady = true }, initialMessage = resultMessage,
-        ) } ?: Text("正在检查…", Modifier.padding(24.dp))
+        )
     }
     if (resultReady) ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = colors.solid) { content() }

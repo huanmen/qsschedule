@@ -6,6 +6,8 @@ object AdSkipGenericRules {
     // Observed SDK controls; lookup alone never qualifies a button for a click.
     val lookupIds = listOf("fanti_ad_txt_skip", "tobid_splash_skip_text", "tobid_interstitial_skip_text", "ms_skipView")
     fun lookupIdsFor(packageName: String): List<String> = when (packageName) {
+        "com.zzw.october" -> listOf("beizi_interstitial_ad_close_container_rl") + lookupIds
+        "com.realtech.xiaocan" -> listOf("tv_skip") + lookupIds
         "tv.danmaku.bili" -> listOf("count_down", "skip")
         "com.zmzx.college.search" -> listOf("id_skip_layout") + lookupIds
         else -> lookupIds
@@ -25,6 +27,7 @@ object AdSkipGenericRules {
     fun findTarget(rule: AdSkipRule, nodes: List<AdSkipNode>): Int? {
         val screen = nodes.firstOrNull()?.bounds ?: return null
         if (screen.width <= 0 || screen.height <= 0) return null
+        volunteerBeiZiClose(rule, nodes, screen)?.let { return it }
         if (rule.packageName == "tv.danmaku.bili") {
             bilibiliPauseClose(nodes, screen)?.let { return it }
         }
@@ -49,6 +52,8 @@ object AdSkipGenericRules {
             // Splash controls live near the screen edge.
             val edge = b.top < screen.top + screen.height * .25 || b.bottom > screen.bottom - screen.height * .2
             if (!edge) return@firstOrNull false
+            if (rule.packageName == "com.realtech.xiaocan" && node.id == "com.realtech.xiaocan:id/tv_skip" &&
+                node.text == "跳过" && nodes.getOrNull(node.parent ?: -1)?.id == "com.realtech.xiaocan:id/splash_logo_container") return@firstOrNull true
             if (node.id == "${rule.packageName}:id/ms_skipView" &&
                 (hasSplashAncestor(nodes, index) || hasKnownAdOverlayAncestor(nodes, index))) return@firstOrNull true
             listOfNotNull(node.text, node.description).any { raw ->
@@ -62,6 +67,28 @@ object AdSkipGenericRules {
         }
         if (labelled != null) return labelled
         return AdSkipDrawnSplash.findTarget(rule, nodes) ?: AdSkipDrawnSplash.findNativeTarget(rule, nodes)
+    }
+
+    /** Observed BeiZi interstitial in 志愿汇: three exact SDK IDs, no creative text matching. */
+    private fun volunteerBeiZiClose(rule: AdSkipRule, nodes: List<AdSkipNode>, screen: AdSkipBounds): Int? {
+        if (rule.packageName != "com.zzw.october") return null
+        val pkg = rule.packageName
+        fun sdk(id: String) = nodes.indices.filter {
+            val node = nodes[it]
+            node.visible && node.enabled && node.packageName == pkg && node.id == "$pkg:id/$id" &&
+                node.bounds?.containedBy(screen) == true
+        }
+        val close = sdk("beizi_interstitial_ad_close_container_rl").singleOrNull() ?: return null
+        val box = nodes[close].bounds ?: return null
+        if (!nodes[close].clickable || box.width !in 1..(screen.width / 8) || box.height !in 1..(screen.height / 12) ||
+            box.left < screen.left + screen.width / 2 || box.top > screen.top + screen.height * 2 / 5) return null
+        val complaint = sdk("beizi_interstitial_ad_complain_tv").singleOrNull() ?: return null
+        val complaintBox = nodes[complaint].bounds ?: return null
+        if (nodes[complaint].text != "投诉" || complaintBox.right >= box.left ||
+            kotlin.math.abs(complaintBox.top - box.top) > box.height) return null
+        val title = sdk("beizi_interstitial_ad_title_tv").singleOrNull() ?: return null
+        if (nodes[title].bounds!!.top <= box.bottom) return null
+        return close
     }
 
     /** Observed pause-ad sheet: exact close description and its own ad-marked subtree. */

@@ -79,6 +79,38 @@ class QnuTimetableImporterTest {
         assertEquals(OccurrenceState.CANCELLED, occurrence.state)
     }
 
+    @Test
+    fun `change detail course code binds truncated name to grid course`() {
+        val page = QnuParsedPage(
+            gridEntries = listOf(
+                QnuGridEntry(1, 1, "形势与政策（专题一）", "01", "教室", "教师", "1-17周", "讲课学时", listOf("停课")),
+            ),
+            courseProfiles = listOf(
+                QnuCourseProfile("形势与政策（专题一）", "01", "XSC001"),
+            ),
+            changeDetails = listOf(
+                QnuChangeDetail(
+                    "调课", "XSC001", "形势与政策", "1", null, null, null,
+                    QnuTimePlace(null, 16, 1, 1, 1, "教室"),
+                    QnuTimePlace(null, 16, 3, 3, 3, "新教室"), false,
+                ),
+            ),
+        )
+        val imported = QnuTimetableImporter.map(page, "test")
+        assertEquals(1, imported.state.courses.size)
+        assertEquals(1, imported.state.exceptions.size)
+        val exception = imported.state.exceptions.single()
+        assertEquals(imported.state.courses.single().id, exception.courseId)
+        assertTrue(imported.diagnostics.none { it.code == "CANCEL_SCOPE_UNCONFIRMED" })
+        val week = OccurrenceExpander.expand(
+            Semester("test", "测试", 2025, Term.AUTUMN, LocalDate.of(2025, 9, 1), 17),
+            imported.state,
+            16,
+        )
+        assertTrue(week.none { it.weekday == 1 && it.state == OccurrenceState.NORMAL })
+        assertTrue(week.any { it.weekday == 3 && it.state == OccurrenceState.MOVED_IN })
+    }
+
     private fun fixture(name: String): ByteArray =
         checkNotNull(javaClass.classLoader.getResourceAsStream("fixtures/$name")) {
             "missing fixture $name"

@@ -31,6 +31,52 @@ class BackendTest(unittest.TestCase):
         self.assertFalse(self.app.completion(self.item))
         self.assertEqual(self.app.statistics()["uniqueInstallations"], {"app": 1})
 
+    def test_download_request_excludes_head_resume_and_missing_files(self):
+        root = Path(self.directory.name)
+        (root / 'downloads').mkdir()
+        (root / 'downloads/qsschedule-1.5.0-release.apk').write_bytes(b'apk')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), self.app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = HTTPConnection('127.0.0.1', server.server_port, timeout=5)
+        try:
+            for method, path, headers in [
+                ('HEAD', '/downloads/qsschedule-1.5.0-release.apk', {}),
+                ('GET', '/downloads/qsschedule-1.5.0-release.apk', {'Range':'bytes=1-'}),
+                ('GET', '/downloads/qsschedule-1.5.0-release.apk', {}),
+                ('GET', '/downloads/qsschedule-missing.apk', {})]:
+                client.request(method, path, headers=headers)
+                client.getresponse().read()
+            self.assertEqual(self.app.statistics()['downloadRequests'], {'qsschedule-1.5.0-release.apk':1})
+        finally:
+            client.close();server.shutdown();server.server_close();thread.join()
+
+    def test_content_manifest_and_nginx_resume_delivery(self):
+        root = Path(self.directory.name)
+        (root / 'resources.json').write_text(json.dumps({'version': 1}))
+        (root / 'downloads').mkdir()
+        name = 'content-' + 'a' * 64 + '.json'
+        (root / 'downloads' / name).write_bytes(b'{}')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), self.app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        connection = HTTPConnection('127.0.0.1', server.server_port, timeout=5)
+        try:
+            connection.request('GET', '/api/resources')
+            response = connection.getresponse()
+            self.assertEqual(json.loads(response.read()), {'version': 1})
+            connection.request('GET', '/downloads/' + name, headers={'Range': 'bytes=1-'})
+            response = connection.getresponse()
+            self.assertEqual(response.getheader('X-Accel-Redirect'), '/qsschedule-internal/' + name)
+            self.assertEqual(response.status, 200)
+            response.read()
+            connection.request('GET', '/downloads/content-' + 'b' * 64 + '.json')
+            response = connection.getresponse()
+            self.assertEqual(response.status, 404)
+            response.read()
+        finally:
+            connection.close(); server.shutdown(); server.server_close(); thread.join()
+
     def test_optional_academic_plugin_manifest_and_download(self):
         root = Path(self.directory.name)
         (root / "downloads").mkdir()

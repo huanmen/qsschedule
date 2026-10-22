@@ -63,6 +63,14 @@ def statistics():
     return {"uniqueInstallations": dict(totals), "completedDownloads": [{"kind": k, "version": v, "count": c} for k, v, c in rows], "downloadRequests": dict(requests)}
 
 
+def record_request(handler, name):
+    # HEAD checks and Range resume requests do not start a new download.
+    if handler.command == 'GET' and not handler.headers.get('Range'):
+        with database() as db:
+            db.execute('INSERT INTO requests VALUES (?,?,1) ON CONFLICT(file,day) DO UPDATE SET count=count+1',
+                       (name, datetime.now(timezone.utc).date().isoformat()))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "QSSchedule"
     def log_message(self, *_):
@@ -87,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
-        files = {"/api/update": "update.json", "/api/announcements": "announcements.json", "/api/plugins/adskip": "plugin.json", "/api/rules/adskip": "adskip-rules.json",
+        files = {"/api/announcements-v2": "announcements-v2.json", "/api/resources": "resources.json", "/api/update": "update.json", "/api/announcements": "announcements.json", "/api/plugins/adskip": "plugin.json", "/api/rules/adskip": "adskip-rules.json",
                  "/api/plugins/schedule-qa": "schedule-qa.json", "/api/plugins/exam-schedule": "exam-schedule.json", "/api/plugins/academic-records": "academic-records.json"}
         if path == "/health":
             return self.send_json({"ok": True})
@@ -111,13 +119,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({'error': 'plugin unpublished'}, 404)
                 if item['package']:
                     file = ROOT / 'plugin-packages' / (item['package']['sha256'] + '.json')
-                    return self.send_json(json.loads(file.read_text(encoding='utf-8')))
+                    rules = json.loads(file.read_text(encoding='utf-8'))
+                    record_request(self, 'adskip-rules.json')
+                    return self.send_json(rules)
             if re.fullmatch(r'/downloads/(?:plugin-data-[0-9a-f]{64}|qsschedule-academic-records-[0-9]+)\.json', path):
                 file = plugin_store.downloadable(ROOT, path)
                 if not file:
                     return self.send_json({'error': 'plugin unpublished'}, 404)
                 try:
                     raw = file.read_bytes()
+                    record_request(self, path.rsplit('/', 1)[-1])
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json; charset=utf-8')
                     self.send_header('Content-Length', str(len(raw)))
@@ -146,7 +157,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "notices unavailable"}, 503, public=True)
         if path in files:
             try:
-                return self.send_json(json.loads((ROOT / files[path]).read_text(encoding="utf-8")))
+                value = json.loads((ROOT / files[path]).read_text(encoding="utf-8"))
+                if path == '/api/rules/adskip':
+                    record_request(self, 'adskip-rules.json')
+                return self.send_json(value)
             except (OSError, ValueError):
                 return self.send_json({"error": "not published"}, 503)
         if re.fullmatch(r"/downloads/qsschedule-academic-records-[0-9]+\.json", path):
@@ -154,6 +168,7 @@ class Handler(BaseHTTPRequestHandler):
                 data = (ROOT / "downloads" / path.rsplit("/", 1)[-1]).read_bytes()
                 if len(data) > 4_000_000:
                     return self.send_json({"error": "invalid package"}, 503)
+                record_request(self, path.rsplit('/', 1)[-1])
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
@@ -164,13 +179,22 @@ class Handler(BaseHTTPRequestHandler):
                 return
             except OSError:
                 return self.send_json({"error": "not published"}, 503)
+        if re.fullmatch(r"/downloads/content-[a-f0-9]{64}\.json", path):
+            name = path.rsplit('/', 1)[-1]
+            if not (ROOT / 'downloads' / name).is_file():
+                return self.send_json({'error': 'not found'}, 404)
+            record_request(self, name)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('X-Accel-Redirect', '/qsschedule-internal/' + name)
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            return
         if path.startswith("/downloads/"):
             name = unquote(path.removeprefix("/downloads/"))
             if not re.fullmatch(r"(?:泉师课程表|qsschedule)-[0-9A-Za-z._-]+\.apk", name) or not (ROOT / "downloads" / name).is_file():
                 return self.send_json({"error": "not found"}, 404)
-            if self.command == "GET" and not self.headers.get("Range"):
-                with database() as db:
-                    db.execute("INSERT INTO requests VALUES (?,?,1) ON CONFLICT(file,day) DO UPDATE SET count=count+1", (name, datetime.now(timezone.utc).date().isoformat()))
+            record_request(self, name)
             self.send_response(200)
             self.send_header("X-Accel-Redirect", "/qsschedule-internal/" + quote(name, safe=""))
             self.send_header("Content-Type", "application/vnd.android.package-archive")

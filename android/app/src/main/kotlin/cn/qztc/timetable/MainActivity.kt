@@ -15,7 +15,7 @@ import androidx.compose.runtime.setValue
 
 class MainActivity : ComponentActivity() {
     private data class LaunchRequest(val id: Int = 0, val today: Boolean = false,
-        val homework: Boolean = false, val calendar: String? = null, val adSkip: Boolean = false)
+        val homework: Boolean = false, val calendar: String? = null, val adSkip: Boolean = false, val update: Boolean = false)
     private var launchRequest by mutableStateOf(LaunchRequest())
     private var readyToDraw = false
 
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             QztcApp(openTodayOnStart = launchRequest.today, openHomeworkOnStart = launchRequest.homework,
                 openCalendarOnStart = launchRequest.calendar, openAdSkipOnStart = launchRequest.adSkip,
-                launchRequestId = launchRequest.id, onReadyToDraw = { readyToDraw = true })
+                openUpdateOnStart = launchRequest.update, launchRequestId = launchRequest.id, onReadyToDraw = { readyToDraw = true })
         }
     }
 
@@ -63,15 +63,17 @@ class MainActivity : ComponentActivity() {
             intent.getBooleanExtra(EXTRA_OPEN_TODAY, false),
             intent.getBooleanExtra(EXTRA_OPEN_HOMEWORK, false),
             intent.getStringExtra(EXTRA_OPEN_CALENDAR),
-            intent.getBooleanExtra(EXTRA_OPEN_AD_SKIP, false))
-        if (next.today || next.homework || next.calendar != null || next.adSkip) launchRequest = next
+            intent.getBooleanExtra(EXTRA_OPEN_AD_SKIP, false), intent.getBooleanExtra(EXTRA_OPEN_UPDATE, false))
+        if (next.today || next.homework || next.calendar != null || next.adSkip || next.update) launchRequest = next
         intent.removeExtra(EXTRA_OPEN_TODAY)
         intent.removeExtra(EXTRA_OPEN_HOMEWORK)
         intent.removeExtra(EXTRA_OPEN_CALENDAR)
         intent.removeExtra(EXTRA_OPEN_AD_SKIP)
+        intent.removeExtra(EXTRA_OPEN_UPDATE)
     }
 
     companion object {
+        const val EXTRA_OPEN_UPDATE = "cn.qztc.timetable.OPEN_UPDATE"
         const val EXTRA_OPEN_TODAY = "cn.qztc.timetable.OPEN_TODAY"
         const val EXTRA_OPEN_HOMEWORK = "cn.qztc.timetable.OPEN_HOMEWORK"
         const val EXTRA_OPEN_CALENDAR = "cn.qztc.timetable.OPEN_CALENDAR"

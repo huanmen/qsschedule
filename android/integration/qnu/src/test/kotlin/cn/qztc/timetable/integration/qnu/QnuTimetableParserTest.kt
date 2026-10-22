@@ -15,6 +15,24 @@ class QnuTimetableParserTest {
         assertEquals("大学生职业生涯发展与规划", result.changeDetails.single().courseName)
     }
 
+    @Test fun `empty room and teacher fields do not shift short course week rules`() {
+        val html = """<div id="title">2025 秋</div><table id="timetable">
+            <tr><th></th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th></tr>
+            <tr><th>第1节</th><td id="1-1">&lt;&lt;形势与政策&gt;&gt;;01<br/><br/><br/>第1、8、16周<br/>讲课学时</td>
+            <td id="2-1">&lt;&lt;选修课&gt;&gt;;02<br/>教学楼A101<br/><br/>第3、7、15周<br/>讲课学时</td></tr>
+        </table>"""
+        val parsed = QnuTimetableParser.parse(html.toByteArray(Charsets.UTF_8))
+        val policy = parsed.gridEntries.single { it.courseName == "形势与政策" }
+        assertNull(policy.room)
+        assertNull(policy.teacher)
+        assertEquals("第1、8、16周", policy.weekText)
+        assertEquals("讲课学时", policy.typeText)
+        val elective = parsed.gridEntries.single { it.courseName == "选修课" }
+        assertEquals("教学楼A101", elective.room)
+        assertNull(elective.teacher)
+        assertEquals("第3、7、15周", elective.weekText)
+    }
+
     @Test fun `row spans spaced headings and numbering column retain profile alignment`() {
         val html="""<table><tr><th>序号</th><th>课程名</th><th>课序号</th><th>学<br>分</th><th>选课 属性</th><th>考核<br>方式</th><th>教室</th></tr>
           <tr><td rowspan="2">1</td><td rowspan="2">英语A(3)</td><td rowspan="2">02</td><td rowspan="2">3.0</td><td rowspan="2">必修</td><td rowspan="2">考试</td><td>A101</td></tr>

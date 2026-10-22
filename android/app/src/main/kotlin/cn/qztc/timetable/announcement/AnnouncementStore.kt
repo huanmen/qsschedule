@@ -55,5 +55,5 @@ class AnnouncementStore(context: Context) {
         }
     }
     private fun Set<String>.takeLastBounded(): Set<String> = toList().takeLast(300).toSet()
-    companion object { const val URL = cn.qztc.timetable.distribution.DistributionClient.BASE_URL + "/api/announcements" }
+    companion object { const val URL = cn.qztc.timetable.distribution.DistributionClient.BASE_URL + "/api/announcements-v2" }
 }

@@ -5,6 +5,7 @@
         android:usesCleartextTraffic="true"
         tools:replace="android:usesCleartextTraffic">
         <activity android:name=".FeatureAcceptanceActivity" android:exported="false" />
+        <activity android:name=".EducationChangesQaActivity" android:exported="true" />
         <activity android:name=".AdSkipQaActivity" android:exported="true" />
         <activity android:name=".WidgetPreviewActivity" android:exported="true" />
         <activity android:name=".ArrangementPageQaActivity" android:exported="true" />

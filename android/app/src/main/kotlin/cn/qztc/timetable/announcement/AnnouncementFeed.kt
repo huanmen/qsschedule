@@ -5,6 +5,9 @@ import kotlinx.serialization.json.Json
 import java.time.Instant
 
 @Serializable
+data class AnnouncementUpdate(val kind: String, val versionCode: Int, val sha256: String)
+
+@Serializable
 data class Announcement(
     val id: String,
     val revision: Int = 1,
@@ -16,8 +19,12 @@ data class Announcement(
     val minVersionCode: Int = 1,
     val maxVersionCode: Int? = null,
     val action: String? = null,
+    val update: AnnouncementUpdate? = null,
 ) {
     val readKey get() = id + ":" + revision
+    val isUpdateNotice get() = action == "check_update" && update?.kind == "apk"
+    fun hasUpdate(currentVersionCode: Int): Boolean =
+        action == "check_update" && update?.kind == "apk" && update.versionCode > currentVersionCode
 }
 
 @Serializable
@@ -40,6 +47,10 @@ data class AnnouncementFeed(val schemaVersion: Int = 1, val items: List<Announce
                 require(it.title.isNotBlank() && it.title.length <= 100 && it.body.isNotBlank() && it.body.length <= 12_000)
                 require(it.minVersionCode >= 1 && (it.maxVersionCode == null || it.maxVersionCode >= it.minVersionCode))
                 require(it.action == null || it.action == "check_update")
+                it.update?.let { target ->
+                    require(it.action == "check_update" && target.kind == "apk" && target.versionCode > 0)
+                    require(target.sha256.matches(Regex("[a-f0-9]{64}")))
+                }
                 val start = Instant.parse(it.publishedAt)
                 require(it.expiresAt == null || Instant.parse(it.expiresAt).isAfter(start))
             }

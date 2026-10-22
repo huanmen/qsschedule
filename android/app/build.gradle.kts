@@ -25,8 +25,8 @@ android {
         applicationId = "cn.qztc.timetable"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "1.5.0"
+        versionCode = 20
+        versionName = "1.5.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["amapLocationKey"] = amapLocationKey
     }

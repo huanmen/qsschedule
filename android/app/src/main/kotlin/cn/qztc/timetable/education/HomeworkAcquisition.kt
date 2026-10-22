@@ -35,8 +35,8 @@ internal fun homeworkNavigationAllowed(url: String): Boolean = runCatching {
 @Composable
 internal fun HomeworkAcquisition(
     credentials: QnuSavedCredentials,
-    onProgress: (JSONObject) -> Unit,
-    onComplete: (JSONObject) -> Unit,
+    onProgress: suspend (JSONObject) -> Unit,
+    onComplete: suspend (JSONObject) -> Unit,
     onFailure: (String) -> Unit,
 ) {
     val context = LocalContext.current

@@ -1,10 +1,24 @@
 # 插件后台管理
 
+## 公网入口（2026-10-19）
+
+公开下载统计与插件列表：<https://huanmen.com.cn/qsschedule/site/>。独立管理登录：<https://huanmen.com.cn/qsschedule/manage/login>，不需要用户名。密码由部署者私下保存，不写入仓库。支持插件添加、资料与规则编辑、草稿、发布、下架、历史恢复及下载统计。
+
+公网入口使用独立的 `qsschedule-portal` 服务（127.0.0.1:18475），通过 HTTPS、密码哈希验证、8 小时会话、Secure/HttpOnly/SameSite Cookie、登录限速及 CSRF 校验保护管理操作。原本的 18474 服务仍只允许本机或 SSH 隧道访问，下面的“无网页密码”描述仅适用于该本地服务，不适用于公网入口。
+
+公共页只显示已发布插件与汇总统计，不返回草稿、审计记录或匿名安装标识原值。插件卡片显示客户端下载完成回报及去重安装标识数量；旧客户端和浏览器下载可能不回报，不能将它等同于使用人数。
+
+密码更换：把 `server/qsschedule/rotate_portal_password.py` 放到服务器 `/opt/qsschedule/`，通过 SSH 执行 `python3 /opt/qsschedule/rotate_portal_password.py`，交互输入并确认至少 16 字符的新密码，然后运行 `systemctl restart qsschedule-portal`。这会清除已有登录会话。不要通过命令参数、Git 或网页文件保存明文密码。密码哈希文件位于 `/etc/qsschedule/portal-auth.json`，root:qsschedule、0640。
+
+公网浏览器只读验收：设置进程环境变量 `QSS_PORTAL_PASSWORD` 后执行 `python docs/qa-portal.py`；覆盖登录/退出、编辑器加载、统计、定制弹窗、390/768/1280 px 布局。不会发布、下架或改写线上插件。服务端额外执行 `python -m unittest test_portal -q`。
+
 在项目根目录执行 `powershell -File Start-Plugin-Admin.ps1 -Server 用户名@服务器`，打开 <http://127.0.0.1:18474/>。可通过 `QSS_DEPLOY_SSH` 环境变量配置 SSH 别名或主机；默认连接项目域名。页面的数据目录应为 `/var/lib/qsschedule`，保存和发布会操作服务器资料。服务只监听服务器本机，关闭 SSH 隧道后可再次启动。
 
 如需仅编辑本机副本，先关闭现有 SSH 隧道，再运行 `powershell -File Start-Plugin-Admin.ps1 -Local`；本机目录为 `server/qsschedule`。启动器仅会自动关闭经核实属于本项目的本机预览服务，不会关闭其他端口占用者。本机草稿不会自动同步到线上。
 
 ## 使用
+
+- **下载统计**：点击后台顶栏“下载统计”，或打开同一 SSH 隧道的 <http://127.0.0.1:18474/stats>。可查看安装包、插件资料包、更新资源的累计/今日/近 7 天请求数，选择 7/30/90 天趋势，并导出各文件统计 CSV。客户端下载完成回报另列，按匿名安装标识与版本去重。下载请求不等于使用人数，包含测试和重复下载；不计 HEAD 与 Range 续传。日期沿用旧数据库的 UTC，北京时间每日 08:00 分界。插件资料与资源请求从 2026-10-17 部署后记录，未追补历史。管理页仍只在本机/SSH 隧道内提供。
 
 - **添加插件**：填写稳定 ID、名称、简介和版本；新插件支持宿主 v1/v2 格式的广告规则数据包。上传 JSON 或填写公开 HTTPS 规则直链，再保存草稿。
 - **修改赛事资料**：选择“赛事与考证”→“规则与资料”，搜索赛事名称、ID 或资料文字，逐字段修改当前/往届资料、时间节点、来源、核对日期和更新渠道。可添加、复制、删除条目。“资料包其他字段”可以编辑别名等全局内容。

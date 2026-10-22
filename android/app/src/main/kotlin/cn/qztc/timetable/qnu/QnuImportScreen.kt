@@ -3,8 +3,12 @@ package cn.qztc.timetable.qnu
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
 import android.net.http.SslError
+import android.view.ActionMode
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -15,6 +19,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.RenderProcessGoneDetail
 import android.view.ViewGroup
+import android.view.WindowManager
+import android.os.Build
+import androidx.core.view.WindowCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.Job
@@ -32,6 +39,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -57,16 +68,21 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -124,10 +140,82 @@ fun QnuImportScreen(
     automaticImport: Boolean = false,
     showAutomaticCheck: Boolean = false,
     campusNetworkChecked: Boolean = false,
+    checkSemester: cn.qztc.timetable.core.domain.model.Semester? = null,
     onCheckFailed: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val content: @Composable () -> Unit = {
+        QnuImportContent(savedCredentials, onSaveCredentials, onClearCredentials, onBack,
+            onImported, onSnapshotSaved, syncOnly, automaticCheck, automaticImport,
+            showAutomaticCheck, campusNetworkChecked, checkSemester, onCheckFailed, modifier)
+    }
+    if (automaticCheck && !showAutomaticCheck) {
+        content()
+    } else {
+        // Xiaomi's root-level content recognizer runs before Window.Callback. A separate
+        // browser window avoids its Activity-decor capture path, without global settings
+        // changes, hidden APIs, or disabling normal WebView gestures.
+        Dialog(onDismissRequest = onBack, properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = false,
+        )) {
+            val view = LocalView.current
+            val colors = LocalQztcColors.current
+            SideEffect {
+                val window = (view.parent as? DialogWindowProvider)?.window
+                if (window != null) {
+                    // This is a full page, not a modal scrim. Style this window rather
+                    // than the Activity window so the MIUI long-press isolation stays intact.
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                        WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or
+                        WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+                    window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                    window.statusBarColor = Color.White.toArgb()
+                    window.navigationBarColor = colors.solid2.toArgb()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        window.isStatusBarContrastEnforced = false
+                        window.isNavigationBarContrastEnforced = false
+                    }
+                    WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = true
+                        isAppearanceLightNavigationBars = !colors.isDark
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize().background(colors.solid2)) {
+                Box(Modifier.fillMaxSize().navigationBarsPadding()) { content() }
+                // Paint the inset explicitly: a transparent dialog status bar can
+                // otherwise expose the Activity's wallpaper instead of this page.
+                Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(Color.White))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun QnuImportContent(
+    savedCredentials: QnuSavedCredentials?,
+    onSaveCredentials: (QnuSavedCredentials) -> Unit,
+    onClearCredentials: () -> Unit,
+    onBack: () -> Unit,
+    onImported: (ImportedTimetable) -> Unit,
+    onSnapshotSaved: () -> Unit,
+    syncOnly: Boolean,
+    automaticCheck: Boolean,
+    automaticImport: Boolean,
+    showAutomaticCheck: Boolean,
+    campusNetworkChecked: Boolean,
+    checkSemester: cn.qztc.timetable.core.domain.model.Semester?,
+    onCheckFailed: (String) -> Unit,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
+    val hostActivity = remember(context) { context.findActivity() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val colors = LocalQztcColors.current
     val backgroundCheck = automaticCheck && !showAutomaticCheck
@@ -153,7 +241,7 @@ fun QnuImportScreen(
     var semesterPickerOffered by remember { mutableStateOf(false) }
     var intranetGate by remember { mutableStateOf(if (campusNetworkChecked) IntranetGate.Ready else IntranetGate.Checking) }
     var pageLoading by remember { mutableStateOf(true) }
-    var showAccount by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(savedCredentials == null) }
     var personalBuffer by remember { mutableStateOf<ImportedTimetable?>(null) }
     var classBuffer by remember { mutableStateOf<ImportedTimetable?>(null) }
     var mergeReview by remember { mutableStateOf<PersonalClassMerger.Result?>(null) }
@@ -273,11 +361,12 @@ fun QnuImportScreen(
     }
 
     suspend fun finishMergedImport(personal: ImportedTimetable?, classTable: ImportedTimetable?) {
-        personalBuffer = personal
+        val personalWithNotices = if (personal != null && classTable != null) mergeClassNotices(personal, classTable) else personal
+        personalBuffer = personalWithNotices
         classBuffer = classTable
         when {
-            personal != null && classTable != null -> {
-                val review = withContext(Dispatchers.Default) { PersonalClassMerger.merge(personal.state, classTable.state) }
+            personalWithNotices != null && classTable != null -> {
+                val review = withContext(Dispatchers.Default) { PersonalClassMerger.merge(personalWithNotices.state, classTable.state) }
                 if (review.needsReview) {
                     webView?.stopLoading()
                     webView?.onPause()
@@ -286,7 +375,7 @@ fun QnuImportScreen(
                     mergeReview = review
                 } else {
                     status = "已合并个人课表与班级课表，正在写入本机…"
-                    onImported(personal.copy(state = review.preferred))
+                    onImported(personalWithNotices.copy(state = review.preferred))
                 }
             }
             personal != null -> {
@@ -376,18 +465,43 @@ fun QnuImportScreen(
                     delay(350)
                 }
                 status = "正在打开个人课表…"
+                pageLoading = true
                 if (!clickSchoolTimetable(view, QnuTimetableKind.PERSONAL)) {
                     failOneClick("页面上没有找到个人课表入口")
                     return@launch
                 }
-                waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }
+                check(waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }) { "个人课表未加载" }
                 delay(450)
                 rememberSession(currentUrl)
                 if (syncOnly || automaticCheck) {
                     status = "正在读取停调课通知…"
                     val html = readTimetableHtml(view, READ_CHANGE_NOTICES_SCRIPT)
-                    val changes = html?.let { withContext(Dispatchers.Default) { QnuTimetableImporter.importChangesHtml(it, semesterId) } }
-                    if (changes == null || changes.hasErrors) failOneClick("通知读取失败，请重试") else onImported(changes.copy(
+                    val personalNotices = html?.let { withContext(Dispatchers.Default) { QnuTimetableImporter.importChangesHtml(it, semesterId) } }
+                    if (personalNotices == null || personalNotices.hasErrors) {
+                        failOneClick("个人课表通知读取失败，请重试")
+                        return@launch
+                    }
+                    // The school may list a dated cancellation only on the class
+                    // timetable. A personal-grid badge alone carries no scope.
+                    status = "正在检查班级课表的停调课通知…"
+                    pageLoading = true
+                    view.loadUrl(selectionUrl)
+                    check(waitUntil { !pageLoading && QnuEndpointPolicy.isCourseSelectionUrl(currentUrl) }) { "无法返回学期入口" }
+                    pageLoading = true
+                    val hasClassTable = clickSchoolTimetable(view, QnuTimetableKind.CLASS)
+                    val classNotices = if (hasClassTable) {
+                        check(waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }) { "班级课表未加载" }
+                        delay(450)
+                        val classHtml = readTimetableHtml(view, READ_CHANGE_NOTICES_SCRIPT)
+                        val parsed = classHtml?.let { withContext(Dispatchers.Default) { QnuTimetableImporter.importChangesHtml(it, semesterId) } }
+                        check(parsed != null && !parsed.hasErrors) { "班级课表通知读取失败" }
+                        parsed
+                    } else null
+                    val changes = personalNotices.copy(state = personalNotices.state.copy(
+                        courses = (personalNotices.state.courses + classNotices?.state?.courses.orEmpty()).distinctBy { it.id },
+                        exceptions = (personalNotices.state.exceptions + classNotices?.state?.exceptions.orEmpty()).distinctBy { it.id },
+                    ))
+                    onImported(changes.copy(
                         semesterHint = cn.qztc.timetable.core.domain.imports.SemesterHint(
                             year = semester.yearLabel.toIntOrNull(), term = QnuSemesterFactory.term(semester.termLabel),
                             termText = semester.termLabel, raw = semester.label)
@@ -407,9 +521,10 @@ fun QnuImportScreen(
                     return@launch
                 }
                 delay(450)
+                pageLoading = true
                 val classOpened = clickSchoolTimetable(view, QnuTimetableKind.CLASS)
                 val classTable = if (classOpened) {
-                    waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }
+                    check(waitUntil { !pageLoading && QnuEndpointPolicy.isTimetableUrl(currentUrl) }) { "班级课表未加载" }
                     delay(450)
                     rememberSession(currentUrl)
                     status = "正在解析班级课表…"
@@ -493,7 +608,8 @@ fun QnuImportScreen(
             onConfirm = { merged ->
                 val source = personalBuffer ?: classBuffer
                 if (source != null) {
-                    onImported(source.copy(state = merged, diagnostics = source.diagnostics))
+                    val accepted = source.copy(state = merged)
+                    onImported(classBuffer?.let { mergeClassNotices(accepted, it) } ?: accepted)
                 }
             },
             onBack = { mergeReview = null; webView?.onResume() },
@@ -659,7 +775,7 @@ fun QnuImportScreen(
                     if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                         WebView.setWebContentsDebuggingEnabled(true)
                     }
-                    WebView(context).also { view ->
+                    TimetablePortalWebView(context).also { view ->
                         webView = view
                         view.setBackgroundColor(colors.solid2.toArgb())
                         view.settings.apply {
@@ -731,6 +847,9 @@ fun QnuImportScreen(
                                 diagnostics.record("page_finished")
                                 currentUrl = url
                                 pageLoading = false
+                                if (QnuEndpointPolicy.isTimetableUrl(url)) {
+                                    view.evaluateJavascript(BLOCK_TIMETABLE_LONG_PRESS_SCRIPT, null)
+                                }
                                 if (QnuEndpointPolicy.isAcademicHomeUrl(url) || QnuEndpointPolicy.isCourseSelectionUrl(url) || QnuEndpointPolicy.isTimetableUrl(url)) {
                                     view.evaluateJavascript("""
                                         (() => {
@@ -789,8 +908,9 @@ fun QnuImportScreen(
                                                     if (selectedSemester == null) selectedSemester = pageSemester
                                                 }
                                                 (automaticCheck || automaticImport) && !checkStarted -> {
-                                                    selectedSemester = catalog.latestSemester()
-                                                    if (selectedSemester == null) onCheckFailed("未找到最新学期的课表入口")
+                                                    selectedSemester = checkSemester?.let { target -> catalog.semester(target.schoolYear, target.term) }
+                                                        ?: if (checkSemester == null) catalog.latestSemester() else null
+                                                    if (selectedSemester == null) onCheckFailed(if (checkSemester == null) "未找到最新学期的课表入口" else "未找到所选学期的课表入口")
                                                     else { checkStarted = true; startImport() }
                                                 }
                                                 automaticCheck || automaticImport -> Unit
@@ -1279,6 +1399,11 @@ internal data class QnuSchoolSemesterCatalog(
     val selectedYearId: String,
     val selectedTermId: String,
 ) {
+    fun semester(year: Int, term: cn.qztc.timetable.core.domain.model.Term): QnuSchoolSemester? {
+        val schoolYear = years.singleOrNull { it.label.trim() == year.toString() } ?: return null
+        val schoolTerm = terms.singleOrNull { QnuSemesterFactory.term(it.label) == term } ?: return null
+        return QnuSchoolSemester(schoolYear.id, schoolYear.label, schoolTerm.id, schoolTerm.label)
+    }
     fun latestSemester(today: LocalDate = LocalDate.now()): QnuSchoolSemester? {
         val currentYear = if (today.monthValue == 1) today.year - 1 else today.year
         val currentTerm = when (today.monthValue) { in 2..5 -> 0; in 6..7 -> 1; else -> 2 }
@@ -1626,6 +1751,55 @@ private const val READ_TIMETABLE_HTML_SCRIPT = """
   return html.length > 2000000 ? '__QZTC_TOO_LARGE__' : html;
 })();
 """
+
+private const val BLOCK_TIMETABLE_LONG_PRESS_SCRIPT = """
+(() => {
+  const visited = new Set();
+  function install(doc) {
+    if (!doc || visited.has(doc)) return;
+    visited.add(doc);
+    try {
+      if (!doc.getElementById('__qztc_disable_timetable_selection')) {
+        const style = doc.createElement('style');
+        style.id = '__qztc_disable_timetable_selection';
+        style.textContent = 'table, table * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }';
+        (doc.head || doc.documentElement).appendChild(style);
+      }
+      doc.addEventListener('contextmenu', event => {
+        if (event.target && event.target.closest && event.target.closest('table')) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+      doc.addEventListener('selectstart', event => {
+        if (event.target && event.target.closest && event.target.closest('table')) {
+          event.preventDefault();
+        }
+      }, true);
+      for (const frame of doc.querySelectorAll('iframe,frame')) {
+        try { install(frame.contentDocument); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+  install(document);
+})();
+"""
+
+private class TimetablePortalWebView(context: Context) : WebView(context) {
+    override fun performLongClick(): Boolean = true
+
+    override fun performLongClick(x: Float, y: Float): Boolean = true
+
+    override fun startActionMode(callback: ActionMode.Callback): ActionMode? = null
+
+    override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? = null
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 private const val READ_CHANGE_NOTICES_SCRIPT = """
 (() => {

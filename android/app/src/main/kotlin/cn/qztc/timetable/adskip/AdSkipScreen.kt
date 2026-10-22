@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.viewinterop.AndroidView
@@ -121,7 +122,9 @@ fun AdSkipScreen(onBack: () -> Unit) {
             AdSkipDivider()
             AdSkipRow("电池优化", Icons.Outlined.BatteryChargingFull, if (unrestricted) "系统已豁免" else "去设置") { powerSettings = true }
             AdSkipDivider()
-            AdSkipRow("自启动", Icons.Outlined.Settings, "去设置") { settings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName))) }
+            // Manufacturer autostart switches have no portable Android status API.
+            // This is a navigation action, not an assertion that access is missing.
+            AdSkipRow("自启动", Icons.Outlined.Settings, "查看设置") { powerSettings = true }
             AdSkipDivider()
             AdSkipRow("运行通知", Icons.Outlined.Notifications, if (notifications) "已开启" else "去开启") {
                 if (Build.VERSION.SDK_INT >= 33 && !notifications) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -154,17 +157,33 @@ fun AdSkipScreen(onBack: () -> Unit) {
             AdSkipStore.prefs(context).edit().putBoolean("consent_v2", true).apply()
             enable()
         }) { Text("开启服务") } }, dismissButton = { TextButton(onClick = { disclosure = false }) { Text("取消") } })
-    if (powerSettings) AlertDialog(onDismissRequest = { powerSettings = false }, title = { Text("后台运行设置") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("在应用信息中，将省电策略设为无限制，并开启自启动。系统电池豁免与厂商省电策略是两个设置。", style = QztcTypography.meta)
-            TextButton(onClick = {
-                powerSettings = false
-                settings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName)))
-            }) { Text("应用省电策略与自启动") }
-            TextButton(onClick = { powerSettings = false; settings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }) {
-            Text(if (unrestricted) "系统电池优化 · 已豁免" else "系统电池优化")
+    if (powerSettings) AlertDialog(
+        onDismissRequest = { powerSettings = false },
+        title = { Text("后台运行设置", style = QztcTypography.pageTitle) },
+        text = {
+            val explanationStyle = QztcTypography.body.copy(fontSize = 16.sp, lineHeight = 25.sp)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("保持广告辅助在切换应用后继续运行，请检查以下设置：", style = explanationStyle, color = colors.ink)
+                Text("1. 省电策略选择「无限制」。\n2. 允许本应用自启动。", style = explanationStyle, color = colors.ink)
+                Text("若系统仍会暂停服务，再检查系统电池优化。它与手机厂商的省电策略是两个设置。", style = explanationStyle, color = colors.mut)
             }
-        } }, confirmButton = { TextButton(onClick = { powerSettings = false }) { Text("完成") } })
+        },
+        confirmButton = {
+            Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = {
+                    powerSettings = false
+                    settings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName)))
+                }, modifier = Modifier.fillMaxWidth()) { Text("应用省电与自启动设置") }
+                OutlinedButton(onClick = {
+                    powerSettings = false
+                    settings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (unrestricted) "查看系统电池优化 · 已豁免" else "打开系统电池优化设置")
+                }
+                TextButton(onClick = { powerSettings = false }, modifier = Modifier.align(Alignment.End)) { Text("关闭") }
+            }
+        },
+    )
     if (feedbackSettings) FeedbackTemplateDialog { feedbackSettings = false }
 }
 

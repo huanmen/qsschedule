@@ -15,7 +15,9 @@ import org.json.JSONObject
 data class QnuSavedCredentials(
     val username: String,
     val password: String,
-)
+) {
+    val configured: Boolean get() = username.isNotBlank() && password.isNotEmpty()
+}
 
 /** Stores the full credential payload as AES-GCM ciphertext backed by Android Keystore. */
 class QnuCredentialStore(context: Context) {
@@ -38,7 +40,7 @@ class QnuCredentialStore(context: Context) {
         QnuSavedCredentials(
             username = json.getString(JSON_USERNAME),
             password = json.getString(JSON_PASSWORD),
-        )
+        ).takeIf { it.configured }
     }.getOrNull()
 
     fun save(credentials: QnuSavedCredentials) {

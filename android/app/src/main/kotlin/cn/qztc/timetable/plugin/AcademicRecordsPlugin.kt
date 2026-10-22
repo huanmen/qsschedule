@@ -17,7 +17,8 @@ import androidx.compose.runtime.*
 /** Downloaded JSON only: the rendering code is trusted host code. */
 object AcademicRecordsPlugin : PluginController {
     const val ID = "academic-records"
-    override val descriptor = PluginDescriptor(ID, "赛事与考证", "公开赛事资料、考证日程与关注更新", 1)
+    override val descriptor = PluginDescriptor(ID, "赛事与考证", "公开赛事资料、考证日程与关注更新", 1,
+        reminderKinds = mapOf("competition" to "赛事安排", "exam" to "考证安排", "updates" to "关注赛事资料更新"))
     private fun prefs(context: Context) = context.getSharedPreferences(ID, Context.MODE_PRIVATE)
     fun dataFile(context: Context) = File(context.filesDir, "plugins/$ID/records.json")
     override fun installedVersion(context: Context) = if (dataFile(context).isFile) prefs(context).getInt("version", 0) else 0
@@ -81,6 +82,7 @@ object AcademicRecordsPlugin : PluginController {
         work.cancelUniqueWork("followed-competition-updates")
         work.cancelUniqueWork("followed-competition-updates-initial")
         androidx.core.app.NotificationManagerCompat.from(context).cancel(1301)
+        androidx.work.WorkManager.getInstance(context).cancelAllWorkByTag("daily-agenda:$ID")
     }
     private fun readLimited(input: InputStream, maximum: Int): ByteArray {
         val output = ByteArrayOutputStream()

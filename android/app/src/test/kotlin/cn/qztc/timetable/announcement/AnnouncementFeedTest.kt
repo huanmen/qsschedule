@@ -25,4 +25,33 @@ class AnnouncementFeedTest {
         assertNotEquals(item.readKey, item.copy(revision = 2).readKey)
         assertEquals(item.readKey, item.copy(body = "说明").readKey)
     }
+    @Test fun onlyExplicitUninstalledTargetGetsAnUpdateButton() {
+        assertFalse(item.hasUpdate(17))
+        assertFalse(item.copy(action = "check_update").hasUpdate(17))
+        val release = item.copy(action = "check_update", update = AnnouncementUpdate("apk", 18, "a".repeat(64)))
+        assertTrue(release.hasUpdate(17))
+        assertFalse(release.hasUpdate(18))
+        assertFalse(release.hasUpdate(19))
+        assertFalse(release.copy(action = null).hasUpdate(17))
+        assertEquals(release, AnnouncementFeed.parse(Json.encodeToString(AnnouncementFeed(items = listOf(release)))).items.single())
+    }
+    @Test fun installedUpdateKeepsItsNoticeIdentityWithoutOfferingADowngrade() {
+        assertFalse(item.isUpdateNotice)
+        assertFalse(item.copy(action = "check_update").isUpdateNotice)
+        val release = item.copy(action = "check_update", update = AnnouncementUpdate("apk", 19, "a".repeat(64)))
+        assertTrue(release.isUpdateNotice)
+        assertTrue(release.hasUpdate(18))
+        assertFalse(release.hasUpdate(19))
+        assertFalse(release.hasUpdate(20))
+    }
+    @Test fun rejectsAmbiguousAndUnsupportedUpdateTargets() {
+        listOf(
+            item.copy(update = AnnouncementUpdate("apk", 18, "a".repeat(64))),
+            item.copy(action = "check_update", update = AnnouncementUpdate("resource", 18, "a".repeat(64))),
+            item.copy(action = "check_update", update = AnnouncementUpdate("apk", 0, "a".repeat(64))),
+            item.copy(action = "check_update", update = AnnouncementUpdate("apk", 18, "bad")),
+        ).forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) { AnnouncementFeed.parse(Json.encodeToString(AnnouncementFeed(items = listOf(invalid)))) }
+        }
+    }
 }

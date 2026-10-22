@@ -22,4 +22,11 @@ class QnuSchoolSemesterCatalogTest {
         assertEquals("qnu-2026-spring", catalog.latestSemester(LocalDate.of(2026, 3, 5))!!.semesterId)
         assertEquals("qnu-2025-autumn", catalog.latestSemester(LocalDate.of(2026, 1, 10))!!.semesterId)
     }
+
+    @Test fun explicitPreviousSemesterUsesSchoolIdsWithoutFallingBackToLatest() {
+        val target = catalog.semester(2026, cn.qztc.timetable.core.domain.model.Term.SPRING)!!
+        assertEquals("year-b", target.yearId)
+        assertEquals("spring", target.termId)
+        org.junit.Assert.assertNull(catalog.semester(2024, cn.qztc.timetable.core.domain.model.Term.AUTUMN))
+    }
 }

@@ -80,7 +80,7 @@ internal fun buildDailyAgenda(
 
 internal fun dailyAgendaDetail(items: List<DailyAgendaItem>, maximum: Int): String =
     if (items.isEmpty()) "今天没有已加入的待办安排。" else buildString {
-        items.take(maximum.coerceIn(1, 30)).forEach { item ->
+        items.take(maximum.coerceAtLeast(1)).forEach { item ->
             append(item.title)
             if (item.detail.isNotBlank()) append(" · ${item.detail.take(120)}")
             append('\n')

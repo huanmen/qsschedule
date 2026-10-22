@@ -53,6 +53,13 @@ object OccurrenceExpander {
 
     fun expand(semester: Semester, state: TimetableState, week: Int? = null): List<ClassOccurrence> {
         val occurrences = mutableListOf<ClassOccurrence>()
+        // Some school notices expose one transfer as both a "makeup" row and a
+        // "move" row. Prefer MOVE at an identical destination so it replaces
+        // the original occurrence without rendering a second class on top.
+        val movedDestinations = state.exceptions.asSequence()
+            .filter { it.type == ExceptionType.MOVE }
+            .mapNotNull { exception -> exception.replacement?.let { exception.courseId to it } }
+            .toList()
 
         for (meeting in state.meetings) {
             for (meetingWeek in meeting.weekRule.weeks) {
@@ -77,7 +84,10 @@ object OccurrenceExpander {
         for (exception in state.exceptions) {
             when (exception.type) {
                 ExceptionType.MAKEUP -> exception.replacement?.let { slot ->
-                    if (slot.inWeek(week)) {
+                    val representedByMove = movedDestinations.any { (courseId, movedSlot) ->
+                        courseId == exception.courseId && movedSlot.samePosition(slot)
+                    }
+                    if (slot.inWeek(week) && !representedByMove) {
                         occurrences += additionOccurrence(semester, exception, slot, OccurrenceState.MAKEUP, slot.teacher)
                     }
                 }
@@ -189,6 +199,10 @@ object OccurrenceExpander {
     )
 
     private fun SlotRef.inWeek(week: Int?): Boolean = week == null || this.week == week
+
+    private fun SlotRef.samePosition(other: SlotRef): Boolean =
+        week == other.week && weekday == other.weekday &&
+            periodStart == other.periodStart && periodEnd == other.periodEnd
 
     private fun teacherForOriginal(
         occurrences: List<ClassOccurrence>,

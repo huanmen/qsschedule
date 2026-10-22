@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>下载统计 · 泉师课程表</title><link rel="stylesheet" href="/admin.css"><link rel="stylesheet" href="/stats.css"><script defer src="/stats.js"></script></head>
+<body><header><div><p class="eyebrow">泉师课程表 · 管理工具</p><h1>下载统计</h1></div><div class="header-actions"><a href="/">插件管理</a><button id="refresh">刷新统计</button></div></header>
+<main class="stats-main"><p id="status" role="status">正在读取统计…</p>
+<div class="stats-toolbar"><label>查看最近 <select id="days"><option value="7">7 天</option><option value="30" selected>30 天</option><option value="90">90 天</option></select></label><button id="export">导出文件统计 CSV</button></div>
+<section id="summary" class="stats-summary" aria-label="下载概况"></section>
+<p class="help">下载量统计服务器收到的首次下载请求；不计 HEAD 检查与 Range 续传，失败后重新下载可能再次计数。它不代表安装成功或活跃人数。日期沿用历史记录的 UTC（北京时间每日 08:00 分界）。</p>
+<section class="stats-section"><h2>每日下载趋势</h2><div id="trend"></div></section>
+<section class="stats-section"><h2>各文件下载量</h2><p class="muted">安装包、插件资料包和更新资源分别记录；插件及资源请求从本次部署开始统计。</p><div class="table-scroll"><table><thead><tr><th>文件</th><th>类型</th><th>累计</th><th>今日</th><th>近 7 天</th><th>所选时段</th></tr></thead><tbody id="files"></tbody></table></div></section>
+<section class="stats-section"><h2>客户端下载完成回报</h2><p class="muted">仅统计支持回报的客户端。同一匿名安装标识、类型和版本只计一次；重装可能改变标识。不能用来推算当前使用人数。</p><div id="completions"></div></section>
+</main></body></html>

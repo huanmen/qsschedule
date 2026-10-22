@@ -128,9 +128,6 @@ private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: Qztc
                     0f to sky[0], .34f to sky[1], .68f to sky[2], 1f to sky[3],
                 ),
             )
-            if (palette != QztcPalette.CITRUS) {
-                drawSun(Offset(size.width * .82f, size.height * .13f), size.minDimension * .065f, Color(0xFFF9DEA0))
-            }
             // Read animation state in drawing so each frame does not recompose the scene.
             val shift = size.width * cloudOffset.value
             drawCloud(Offset(size.width * .12f + shift, size.height * .22f), size.width * .15f, .28f)
@@ -160,9 +157,7 @@ private fun SceneBackground(darkTheme: Boolean, animated: Boolean, palette: Qztc
                     drawOval(Color(0xFFB8E5E8).copy(alpha = .26f), Offset(size.width * .42f, size.height * .80f), Size(size.width * .62f, size.height * .20f))
                 }
                 QztcPalette.CITRUS -> {
-                    // Citrus uses a warm sun and leaf silhouettes rather than
-                    // the Soda bubbles, so the default scene has its own identity.
-                    drawSun(Offset(size.width * .80f, size.height * .18f), size.minDimension * .085f, Color(0xFFFFD56A))
+                    // Leaf silhouettes distinguish Citrus from the other palettes.
                     drawOval(Color(0xFF6E9A62).copy(alpha = .30f),
                         topLeft = Offset(size.width * .12f, size.height * .65f),
                         size = Size(size.width * .16f, size.height * .055f))

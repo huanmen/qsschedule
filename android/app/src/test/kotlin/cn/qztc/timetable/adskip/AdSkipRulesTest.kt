@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdSkipRulesTest {
+    @Test fun offscreenFirstMatchDoesNotHideVisibleCloseAndAllOffscreenAreRejected() {
+        val rule = AdSkipRule(id = "test-display", name = "test", packageName = "com.example.app", targetId = "ad_close")
+        val offscreen = AdSkipNode("com.example.app:id/ad_close", null, true, true, true,
+            bounds = AdSkipBounds(2180, 784, 2257, 860), packageName = rule.packageName)
+        val onscreen = offscreen.copy(bounds = AdSkipBounds(1100, 784, 1177, 860))
+        val display = AdSkipBounds(0, 0, 1280, 2772)
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(offscreen, onscreen), display))
+        assertEquals(1, AdSkipMatcher.findTarget(rule, listOf(onscreen, onscreen), display) { it == 1 })
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(offscreen), display))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(onscreen.copy(visible = false)), display))
+    }
+
     @Test fun frozenBacklogAndDelayedVerificationAreNotCurrentEvidence() {
         assertTrue(AdSkipTiming.fresh(1000, 1100))
         assertFalse(AdSkipTiming.fresh(1000, 5000))
@@ -218,7 +230,10 @@ class AdSkipRulesTest {
         assertTrue(AdSkipTiming.rapidSplash("com.yiban.app", "", 1000, 1050))
         assertFalse(AdSkipTiming.rapidSplash("com.yiban.app", "com.yiban.app.home.activity.HomeActivityV2", 1000, 1100))
         assertFalse(AdSkipTiming.rapidSplash("com.yiban.app", "", 1000, 9000))
-        assertFalse(AdSkipTiming.rapidSplash("com.cainiao.wireless", "", 1000, 1100))
+        assertTrue(AdSkipTiming.rapidSplash("com.cainiao.wireless", "", 1000, 1100))
+        assertTrue(AdSkipTiming.rapidSplash("com.mygolbs.mybus", "", 1000, 1100))
+        assertFalse(AdSkipTiming.rapidSplash("cn.qztc.timetable", "", 1000, 1100))
+        assertFalse(AdSkipTiming.rapidSplash("com.cainiao.wireless", "", 1000, 9000))
         assertFalse(AdSkipTiming.rapidSplash("com.yiban.app", "", 1000, 999))
     }
     @Test fun leavingAppOrIncompleteTreeIsNotAdClosed() {

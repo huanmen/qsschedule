@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>插件管理 · 泉师课表</title><link rel="stylesheet" href="/admin.css"><script defer src="/admin.js"></script></head>
 <body>
-<header><div><p class="eyebrow">泉师课表 · 管理工具</p><h1>插件管理</h1></div><div class="header-actions"><button id="reload">刷新</button><button id="preview">市场预览</button><button id="new" class="primary">＋ 添加插件</button></div></header>
+<header><div><p class="eyebrow">泉师课表 · 管理工具</p><h1>插件管理</h1></div><div class="header-actions"><a href="/stats">下载统计</a><button id="reload">刷新</button><button id="preview">市场预览</button><button id="new" class="primary">＋ 添加插件</button></div></header>
 <p class="environment" id="environment">正在连接管理服务…</p>
 <div id="notice" role="status" aria-live="polite"></div>
 <main><aside><div class="catalog-heading"><h2>插件目录</h2><span id="count"></span></div><input id="search" type="search" aria-label="搜索插件" placeholder="搜索名称或 ID"><nav id="filters" aria-label="筛选状态"><button data-status="all" aria-pressed="true">全部</button><button data-status="published">已发布</button><button data-status="draft">草稿</button><button data-status="unpublished">已下架</button></nav><div id="plugins"></div></aside>

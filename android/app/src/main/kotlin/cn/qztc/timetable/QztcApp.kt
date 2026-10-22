@@ -197,7 +197,7 @@ enum class TopDestination(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = false, openCalendarOnStart: String? = null,openAdSkipOnStart:Boolean=false,
-    launchRequestId: Int = 0, onReadyToDraw: () -> Unit = {}) {
+    launchRequestId: Int = 0, onReadyToDraw: () -> Unit = {}, openUpdateOnStart: Boolean = false) {
     val context = LocalContext.current
     val academicPluginInstalled = cn.qztc.timetable.plugin.rememberAcademicRecordsInstalled()
     val preferencesStore = remember { AppPreferencesStore(context.qztcDataStore) }
@@ -256,6 +256,8 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             scope.launch { preferencesStore.setCourseReminder(courseId, minutes, message) }
         }
         val demoScheduleState = remember { DemoScheduleState() }
+        var currentTermSchedule by remember { mutableStateOf<ImportedSchedule?>(null) }
+        var reminderDay by remember { mutableStateOf(LocalDate.now()) }
         var current by rememberSaveable { mutableStateOf<TopDestination?>(null) }
         var localScheduleLoaded by remember { mutableStateOf(false) }
         var calendarContentReady by remember { mutableStateOf(false) }
@@ -307,11 +309,6 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
         val announcementItems = remember(announcementRevision) { announcementStore.items() }
         val importantAnnouncement = remember(announcementRevision) { announcementStore.important() }
         LaunchedEffect(announcementStore) { announcementStore.refresh() }
-        if (importantAnnouncement != null && secondaryPage == SecondaryPage.NONE && current != null) {
-            ImportantAnnouncementDialog(importantAnnouncement,
-                onDismiss = { announcementStore.dismiss(importantAnnouncement) },
-                onOpen = { announcementStore.dismiss(importantAnnouncement); secondaryPage = SecondaryPage.ANNOUNCEMENTS })
-        }
         var upcomingChangesDialog by rememberSaveable { mutableStateOf(false) }
         var upcomingChangesAlreadyChecked by rememberSaveable { mutableStateOf(false) }
         var importReturnPage by rememberSaveable { mutableStateOf(ImportReturnPage.NONE) }
@@ -350,6 +347,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
         var notificationAllowed by remember { mutableStateOf(QztcNotifications.canPost(context)) }
         var updateState by remember { mutableStateOf<AppUpdateState?>(null) }
         var updateDialogVisible by remember { mutableStateOf(false) }
+        var resourceUpdateVisible by remember { mutableStateOf(false) }
         var updateDownloadJob by remember { mutableStateOf<Job?>(null) }
         var updateDownloadControl by remember { mutableStateOf<AppUpdateClient.DownloadControl?>(null) }
         var reminderTestState by remember { mutableStateOf(ReminderTestState()) }
@@ -402,24 +400,78 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             }
         }
 
-        fun checkForUpdates() {
-            updateDialogVisible = true
-            if (updateState is AppUpdateState.Available || updateState == AppUpdateState.Checking) return
+        fun checkApkForUpdates(showResourcesIfCurrent: Boolean = false) {
+            if (updateState is AppUpdateState.Available) { updateDialogVisible = true; return }
+            if (updateState == AppUpdateState.Checking) return
+            updateDialogVisible = false
             updateState = AppUpdateState.Checking
             scope.launch {
                 AppUpdateClient.check(BuildConfig.VERSION_CODE).fold(
                     onSuccess = { manifest ->
-                        updateState = if (manifest == null) {
-                            AppUpdateState.Message("已经是最新版本", "当前版本 ${BuildConfig.VERSION_NAME}")
-                        } else {
-                            AppUpdateState.Available(manifest)
+                        updateState = manifest?.let { AppUpdateState.Available(it) }
+                        updateDialogVisible = manifest != null
+                        if (manifest == null) {
+                            if (showResourcesIfCurrent) resourceUpdateVisible = true
+                            else scope.launch { snackbarHostState.showSnackbar("已经是最新版本") }
                         }
                     },
                     onFailure = { error ->
-                        updateState = AppUpdateState.Message("检查更新失败", error.message ?: "请稍后重试")
+                        updateState = null
+                        scope.launch { snackbarHostState.showSnackbar(error.message ?: "检查更新失败，请稍后重试") }
                     },
                 )
             }
+        }
+
+        fun checkForUpdates(resumeResourceTransfer: Boolean = true) {
+            // Keep an in-progress resource transfer accessible, but stale available
+            // content must never hide an application upgrade that supplies engine fixes.
+            val resourceStage = cn.qztc.timetable.update.ResourceUpdateSession.state.value.stage
+            if (resumeResourceTransfer && resourceStage in setOf("downloading", "paused", "pausing", "clearing", "applying")) {
+                resourceUpdateVisible = true
+            } else {
+                resourceUpdateVisible = false
+                checkApkForUpdates(showResourcesIfCurrent = true)
+            }
+        }
+
+        fun openAnnouncementUpdate(item: cn.qztc.timetable.announcement.Announcement) {
+            val target = item.update ?: return
+            if (!item.hasUpdate(BuildConfig.VERSION_CODE) || updateDownloadJob?.isActive == true) return
+            resourceUpdateVisible = false
+            updateDialogVisible = false
+            updateState = AppUpdateState.Checking
+            scope.launch {
+                AppUpdateClient.check(BuildConfig.VERSION_CODE).fold(
+                    onSuccess = { manifest ->
+                        if (manifest != null && manifest.latestVersionCode == target.versionCode && manifest.sha256 == target.sha256) {
+                            updateState = AppUpdateState.Available(manifest)
+                            updateDialogVisible = true
+                        } else {
+                            updateState = null
+                            snackbarHostState.showSnackbar("此公告对应的更新已完成或已撤回，请刷新公告")
+                        }
+                    },
+                    onFailure = { error ->
+                        updateState = null
+                        snackbarHostState.showSnackbar(error.message ?: "暂时无法检查此更新")
+                    },
+                )
+            }
+        }
+
+        LaunchedEffect(launchRequestId, openUpdateOnStart) { if (openUpdateOnStart) checkForUpdates() }
+
+        cn.qztc.timetable.update.ResourceUpdateHost(
+            visible = resourceUpdateVisible,
+            onDismiss = { resourceUpdateVisible = false },
+            onNoUpdate = { resourceUpdateVisible = false; checkApkForUpdates() },
+        )
+        if (importantAnnouncement != null && secondaryPage == SecondaryPage.NONE && current != null && !resourceUpdateVisible && !updateDialogVisible) {
+            ImportantAnnouncementDialog(importantAnnouncement,
+                onDismiss = { announcementStore.dismiss(importantAnnouncement) },
+                onOpen = { announcementStore.dismiss(importantAnnouncement); secondaryPage = SecondaryPage.ANNOUNCEMENTS },
+                onUpdate = { announcementStore.dismiss(importantAnnouncement); openAnnouncementUpdate(importantAnnouncement) })
         }
 
         fun startUpdateDownload(manifest: AppUpdateClient.Manifest) {
@@ -496,6 +548,8 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
         }
 
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            credentialRevision += 1
+            reminderDay = LocalDate.now()
             scope.launch { announcementStore.refresh() }
             notificationAllowed = QztcNotifications.canPost(context)
             if (retestReminderOnResume) {
@@ -635,7 +689,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             cn.qztc.timetable.education.HomeworkReminderScheduler.activate(context, account)
         }
 
-        LaunchedEffect(preferences.dailyAgenda, loadedPreferences != null) {
+        LaunchedEffect(preferences.dailyAgenda, loadedPreferences != null, academicPluginInstalled) {
             if (loadedPreferences != null) cn.qztc.timetable.reminder.DailyAgendaScheduler.reschedule(context, preferences.dailyAgenda)
         }
 
@@ -647,9 +701,12 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             preferences.courseReminderMessages,
             preferences.remindOnHolidays,
             demoScheduleState.importedSchedule,
+            currentTermSchedule?.state,
+            reminderDay,
         ) {
             val reminderSemester = Semester.forReminders(timetableRepository.semesters(), LocalDate.now())
             val reminderSchedule = reminderSemester?.let { timetableRepository.importedSchedule(it) }
+            currentTermSchedule = reminderSchedule
             CourseReminderScheduler.reschedule(
                 context = context,
                 schedule = reminderSchedule,
@@ -871,6 +928,30 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             secondaryPage = secondaryParents.lastOrNull()?.let(SecondaryPage::valueOf) ?: SecondaryPage.NONE
             secondaryParents = secondaryParents.dropLast(1)
         }
+        val requireEducationAccount = cn.qztc.timetable.qnu.rememberEducationAccountGate(
+            configured = savedCredentials?.configured == true,
+            onConfigure = {
+                openSecondaryPage(SecondaryPage.EDUCATION_ACCOUNT)
+            },
+        )
+        val openCurrentChanges = {
+            scope.launch {
+                val term = Semester.forReminders(timetableRepository.semesters(), LocalDate.now())
+                if (term == null) snackbarHostState.showSnackbar("请先导入当前学期课表")
+                else {
+                    currentTermSchedule = timetableRepository.importedSchedule(term)
+                    upcomingChangesAlreadyChecked = false; upcomingChangesDialog = true
+                }
+            }
+            Unit
+        }
+        LaunchedEffect(secondaryPage, savedCredentials, upcomingChangesDialog) {
+            if (savedCredentials?.configured != true && (secondaryPage in setOf(SecondaryPage.STUDY, SecondaryPage.HOMEWORK) || upcomingChangesDialog)) {
+                upcomingChangesDialog = false
+                if (secondaryPage in setOf(SecondaryPage.STUDY, SecondaryPage.HOMEWORK)) closeSecondaryPage()
+                requireEducationAccount { }
+            }
+        }
         LaunchedEffect(destination, secondaryPage, settingsRestorePending) {
             if (destination == TopDestination.Mine && secondaryPage == SecondaryPage.NONE && settingsRestorePending) {
                 withFrameNanos { }
@@ -976,7 +1057,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                             SecondaryPage.COURSE_TOOLS -> cn.qztc.timetable.education.CourseImportToolsScreen(
                                 onBack = { closeSecondaryPage() },
                                 onImport = { importReturnPage = ImportReturnPage.COURSE_TOOLS; secondaryPage = SecondaryPage.QNU_IMPORT },
-                                onCheckChanges = { upcomingChangesDialog = true },
+                                onCheckChanges = { requireEducationAccount { openCurrentChanges() } },
                                 canCheckChanges = activeSemester != null,
                             )
                             SecondaryPage.COURSE_COLORS -> CourseColorSettingsScreen(
@@ -1013,6 +1094,13 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                             )
 
                             SecondaryPage.REMINDER_SETTINGS -> ReminderSettingsScreen(
+                                pluginSources = cn.qztc.timetable.plugin.PluginRegistry.plugins.filter {
+                                    it.installedVersion(context) > 0 && it.descriptor.reminderKinds.isNotEmpty()
+                                }.map { cn.qztc.timetable.feature.settings.ReminderPluginSource(it.descriptor.id, it.descriptor.name, it.descriptor.reminderKinds) },
+                                homeworkOptions = { cn.qztc.timetable.education.HomeworkReminderSettings() },
+                                onPreviewPluginReminder = { _, options ->
+                                    QztcNotifications.notifyDailyAgenda(context, "其他事项提醒预览", "赛事与考证 · 安排与资料更新", options.displayMode)
+                                },
                                 academicPluginInstalled = academicPluginInstalled,
                                 onPluginMarket = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
                                 dailyAgenda = preferences.dailyAgenda,
@@ -1027,12 +1115,12 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                         val sent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                             cn.qztc.timetable.reminder.DailyAgendaScheduler.preview(context, preferences.dailyAgenda)
                                         }
-                                        snackbarHostState.showSnackbar(if (sent) "今日待办通知已发送" else "请先允许通知权限")
+                                        snackbarHostState.showSnackbar(if (sent) "其他事项通知已发送" else "请先允许通知权限")
                                     }
                                 },
                                 state = courseReminderState,
-                                courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
-                                semesterLabel = demoScheduleState.importedSchedule?.semester?.name ?: "尚未导入课表",
+                                courses = currentTermSchedule?.state?.courses.orEmpty(),
+                                semesterLabel = currentTermSchedule?.semester?.name ?: "尚未导入当前学期课表",
                                 onBack = { closeSecondaryPage() },
                                 onSaveCourseReminder = saveReminder,
                                 testState = reminderTestState,
@@ -1095,12 +1183,12 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                 courses = demoScheduleState.importedSchedule?.state?.courses.orEmpty(),
                                 credentials = savedCredentials,
                                 onBack = { closeSecondaryPage() },
-                                onConfigureAccount = { importReturnPage = ImportReturnPage.STUDY; secondaryPage = SecondaryPage.QNU_IMPORT },
+                                onConfigureAccount = { openSecondaryPage(SecondaryPage.EDUCATION_ACCOUNT) },
                             )
                             SecondaryPage.HOMEWORK -> cn.qztc.timetable.education.HomeworkScreen(
                                 credentials = savedCredentials,
                                 onBack = { closeSecondaryPage() },
-                                onConfigureAccount = { importReturnPage = ImportReturnPage.HOMEWORK; secondaryPage = SecondaryPage.QNU_IMPORT },
+                                onConfigureAccount = { openSecondaryPage(SecondaryPage.EDUCATION_ACCOUNT) },
                             )
                             SecondaryPage.ACADEMIC_HUB, SecondaryPage.ACADEMIC_CALENDAR -> cn.qztc.timetable.education.AcademicHubScreen(
                                 onPluginMarket = { openSecondaryPage(SecondaryPage.PLUGIN_MARKET) },
@@ -1145,7 +1233,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                             SecondaryPage.ANNOUNCEMENTS -> AnnouncementScreen(
                                 store = announcementStore,
                                 onBack = { closeSecondaryPage() },
-                                onUpdate = { checkForUpdates() },
+                                onUpdate = { openAnnouncementUpdate(it) },
                             )
 
                             SecondaryPage.PERSONALIZATION -> PersonalizationScreen(
@@ -1305,7 +1393,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                     SemesterScheduleSettingsScreen(
                                         semester = semester,
                                         showSemesterTools = activeSemesterId != null,
-                                        onViewScheduleChanges = { upcomingChangesDialog = true },
+                                        onViewScheduleChanges = { requireEducationAccount { openCurrentChanges() } },
                                         periodScheme = periodScheme,
                                         academicDays = demoScheduleState.importedSchedule?.academicDays.orEmpty(),
                                         onBack = { closeSecondaryPage() },
@@ -1507,6 +1595,11 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                 }
                             }
 
+                            SecondaryPage.EDUCATION_ACCOUNT -> cn.qztc.timetable.qnu.EducationAccountScreen(
+                                savedCredentials, onBack = { closeSecondaryPage() }, onSave = {
+                                    credentialStore.save(it); credentialRevision += 1; closeSecondaryPage()
+                                },
+                            )
                             SecondaryPage.QNU_IMPORT -> QnuImportScreen(
                                 syncOnly = importReturnPage == ImportReturnPage.SYNC_CENTER,
                                 automaticCheck = importReturnPage == ImportReturnPage.SYNC_CENTER,
@@ -1735,6 +1828,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                     periodScheme = activePeriodScheme,
                                     teachingWeeks = demoScheduleState.importedSchedule?.state?.importedTeachingWeeks,
                                     semesters = importedSemesters.map { MineSemesterOption(it.id, it.name) },
+                                    currentVersionName = BuildConfig.VERSION_NAME,
                                     updateLabel = when (val state = updateState) {
                                         AppUpdateState.Checking -> "正在检查"
                                         is AppUpdateState.Available -> when {
@@ -1773,11 +1867,10 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                     importReturnPage = ImportReturnPage.DIRECT
                                     importCampusDialog = true
                                 },
-                                onStudyClick = { studyInitialTab = 0; openSecondaryPage(SecondaryPage.STUDY) },
-                                onCreditsClick = { studyInitialTab = 1; openSecondaryPage(SecondaryPage.STUDY) },
+                                onStudyClick = { requireEducationAccount { studyInitialTab = 0; openSecondaryPage(SecondaryPage.STUDY) } },
+                                onCreditsClick = { requireEducationAccount { studyInitialTab = 1; openSecondaryPage(SecondaryPage.STUDY) } },
                                 onCheckChangesClick = {
-                                    upcomingChangesAlreadyChecked = false
-                                    upcomingChangesDialog = true
+                                    requireEducationAccount { openCurrentChanges() }
                                 },
                                 onSettingsVisibilityChange = { coverBottomBar = it },
                                 onCompetitionsClick = { openSecondaryPage(SecondaryPage.ACADEMIC_HUB) },
@@ -1798,7 +1891,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                                     openSecondaryPage(SecondaryPage.CAMPUS_ALIASES)
                                 },
                                 onCampusMapClick = { openSecondaryPage(SecondaryPage.CAMPUS_MAP) },
-                                onHomeworkClick = { homeworkCampusDialog = true },
+                                onHomeworkClick = { requireEducationAccount { homeworkCampusDialog = true } },
                                 onStartDateClick = {
                                     openSecondaryPage(SecondaryPage.ACTIVITY_MANAGEMENT)
                                 },
@@ -1874,7 +1967,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
             onReady = { importCampusDialog = false; importCampusChecked = true; openSecondaryPage(SecondaryPage.QNU_IMPORT) },
         )
         if (upcomingChangesDialog) {
-            val semester = activeSemester ?: demoScheduleState.importedSchedule?.semester
+            val semester = currentTermSchedule?.semester
             if (semester != null) {
                 UpcomingChangesDialog(
                     semester = semester,
@@ -1887,7 +1980,10 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
                         importReturnPage = ImportReturnPage.SYNC_CENTER
                         secondaryPage = SecondaryPage.QNU_IMPORT
                     },
-                    onApplied = { refreshSchedule(semester.id) },
+                    onApplied = {
+                        if (activeSemesterId == semester.id) refreshSchedule(semester.id)
+                        currentTermSchedule = timetableRepository.importedSchedule(semester)
+                    },
                 )
             }
         }
@@ -1928,6 +2024,7 @@ fun QztcApp(openTodayOnStart: Boolean = false, openHomeworkOnStart: Boolean = fa
 }
 
 private enum class SecondaryPage {
+    EDUCATION_ACCOUNT,
     COURSE_TOOLS,
     ACADEMIC_HUB,
     ACADEMIC_CALENDAR,

@@ -147,7 +147,7 @@ object QztcNotifications {
         val manager = context.getSystemService(NotificationManager::class.java)
         val popup = mode == ReminderDisplayMode.SCREEN_POPUP
         val channel = if (popup) "daily-agenda-popup" else "daily-agenda"
-        manager.createNotificationChannel(NotificationChannel(channel, if (popup) "每日待办（弹窗）" else "每日待办",
+        manager.createNotificationChannel(NotificationChannel(channel, if (popup) "其他事项（弹窗）" else "其他事项",
             if (popup) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT))
         return post(context, 73001, builder(context, channel)
             .setContentTitle(title).setContentText(detail.lineSequence().firstOrNull())
@@ -156,17 +156,19 @@ object QztcNotifications {
             .setPriority(if (popup) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT).build())
     }
 
-    fun notifyHomeworkReminder(context: Context, title: String, detail: String, notificationId: Int): Boolean {
-        val channel = "homework-reminders"
+    fun notifyHomeworkReminder(context: Context, title: String, detail: String, notificationId: Int,
+        mode: ReminderDisplayMode = ReminderDisplayMode.NOTIFICATION_BAR): Boolean {
+        val popup = mode == ReminderDisplayMode.SCREEN_POPUP
+        val channel = if (popup) "homework-reminders-popup" else "homework-reminders-normal"
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(channel, "作业提醒", NotificationManager.IMPORTANCE_HIGH))
+            NotificationChannel(channel, if (popup) "作业提醒（弹窗）" else "作业提醒", if (popup) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT))
         return post(context, notificationId, builder(context, channel, Intent(context, MainActivity::class.java)
             .setAction(MainActivity.EXTRA_OPEN_HOMEWORK)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(MainActivity.EXTRA_OPEN_HOMEWORK, true))
             .setContentTitle(title).setContentText(detail)
             .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setPriority(NotificationCompat.PRIORITY_HIGH).build())
+            .setPriority(if (popup) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT).build())
     }
 
     fun notifyPlugin(context: Context, pluginId: String, name: String, title: String, detail: String, mode: ReminderDisplayMode): Boolean {

@@ -17,6 +17,7 @@ data class PluginDescriptor(
     val version: Int,
     val dependencies: Set<PluginDependency> = emptySet(),
     val capabilities: Set<PluginCapability> = emptySet(),
+    val reminderKinds: Map<String, String> = emptyMap(),
 )
 
 /** Native plugins provide their own screen but share the same market lifecycle. */

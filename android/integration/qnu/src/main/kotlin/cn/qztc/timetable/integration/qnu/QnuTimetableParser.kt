@@ -1,6 +1,7 @@
 package cn.qztc.timetable.integration.qnu
 
 import cn.qztc.timetable.core.domain.imports.ImportDiagnostic
+import cn.qztc.timetable.core.domain.model.WeekRuleText
 import java.io.ByteArrayInputStream
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -284,7 +285,7 @@ object QnuTimetableParser {
             return
         }
         val (weekday, periodRow) = coordinates
-        val lines = cellLines(cell)
+        val lines = cellLines(cell, preserveEmpty = true)
         if (lines.isEmpty()) return
 
         var index = 0
@@ -328,65 +329,90 @@ object QnuTimetableParser {
         timetableGrid: Element?,
         diagnostics: MutableList<ImportDiagnostic>,
     ): List<QnuChangeDetail> {
-        val detailRows: (Element) -> Boolean = { table ->
-            table.id() != "timetable" && table.select("tr").any { row -> row.select("> td").size >= 10 }
+        val tables = document.select("table").filter { table ->
+            table != timetableGrid && table.id() != "timetable" &&
+                table.select("tr").any { it.closest("table") === table && it.children().count { cell -> cell.tagName() in setOf("td", "th") } >= 10 } &&
+                listOf("停课", "调课", "补课", "代课").any { profileHeader(table.text()).contains(it) }
         }
-        val tables = document.select("table").filter { it != timetableGrid && detailRows(it) &&
-            (it.text().contains("停课") || it.text().contains("调课") || it.text().contains("补课") || it.text().contains("代课")) }
         if(tables.isEmpty())return emptyList()
         val details = mutableListOf<QnuChangeDetail>()
-        for(table in tables) {
-        var context: QnuChangeDetail? = null
-        for (row in table.select("tr").filter { it.closest("table")===table }) {
-            if (row.select("th").isNotEmpty()) continue // 两行表头
-            val cells = row.select("> td")
-            val texts = cells.map { cleanText(it.text()) }
-            when {
-                texts.size >= 17 -> {
+        for (table in tables) {
+            val rows = table.select("tr").filter { it.closest("table") === table }
+            val expanded = expandedDetailRows(rows)
+            val firstData = expanded.indexOfFirst { cells -> cells.any { cell ->
+                profileHeader(cell?.text().orEmpty()) in setOf("停课", "调课", "补课", "代课")
+            } }
+            if (firstData < 0) continue
+            // Resolve the two-level headings after expanding rowspan/colspan.
+            // Some terms omit 代课人 or insert a numbering column.
+            val headings = (0 until expanded.maxOf { it.size }).map { column ->
+                expanded.take(firstData).mapNotNull { it.getOrNull(column)?.text()?.let(::profileHeader) }.distinct().joinToString("")
+            }
+            fun column(vararg names: String) = headings.indexOfFirst { heading -> names.any(heading::contains) }
+            val type = column("类型").takeIf { it >= 0 } ?: 0
+            val code = column("课程号", "课程代码").takeIf { it >= 0 } ?: 1
+            val name = column("课程名").takeIf { it >= 0 } ?: 2
+            val sequence = column("课序号").takeIf { it >= 0 } ?: 3
+            val teacher = column("教师姓名", "教师").takeIf { it >= 0 } ?: 4
+            val substitute = column("代课人", "代课教师")
+            val hours = column("学时").takeIf { it >= 0 } ?: 6
+            val original = headings.indexOfFirst { (it.contains("停/代课") || it.contains("停代课") || it.contains("原安排") || it.contains("停课时间")) && it.contains("日期") }
+                .takeIf { it >= 0 } ?: 7
+            val makeup = headings.indexOfFirst { it.contains("补课") && it.contains("日期") }.takeIf { it >= 0 } ?: 12
+            for ((index, cells) in expanded.withIndex().drop(firstData)) {
+                val texts = cells.map { it?.text()?.let(::cleanText) }
+                val typeText = texts.getOrNull(type)?.let(::profileHeader).orEmpty()
+                if (typeText !in setOf("停课", "调课", "补课", "代课")) continue
+                if (cells.size >= maxOf(original, makeup) + 5) {
                     val detail = QnuChangeDetail(
-                        typeText = texts[0].orEmpty(),
-                        courseCode = texts[1],
-                        courseName = cells[2].let { cell ->
+                        typeText = typeText,
+                        courseCode = texts.getOrNull(code),
+                        courseName = cells.getOrNull(name)?.let { cell ->
                             val titles = (listOf(cell.attr("title")) + cell.select("[title]").map { it.attr("title") })
                                 .mapNotNull(::cleanText).filter { it.isNotBlank() }
-                            val visible = texts[2].orEmpty()
+                            val visible = texts.getOrNull(name).orEmpty()
                             titles.filter { it.startsWith(visible.trimEnd('.', '…')) || visible.contains('…') || visible.contains("...") }
-                                .maxByOrNull { it.length } ?: texts[2]
+                                .maxByOrNull { it.length } ?: texts.getOrNull(name)
                         },
-                        sequence = texts[3],
-                        teacher = texts[4],
-                        substituteTeacher = texts[5],
-                        hoursText = texts[6],
-                        original = timePlace(texts.subList(7, 12)),
-                        makeup = timePlace(texts.subList(12, 17)),
-                        isContinuation = false,
+                        sequence = texts.getOrNull(sequence),
+                        teacher = texts.getOrNull(teacher),
+                        substituteTeacher = texts.getOrNull(substitute.takeIf { it >= 0 } ?: if (headings.all(String::isBlank)) 5 else -1),
+                        hoursText = texts.getOrNull(hours),
+                        original = timePlace(texts.subList(original, original + 5)),
+                        makeup = timePlace(texts.subList(makeup, makeup + 5)),
+                        isContinuation = cells.getOrNull(type)?.parent() !== rows[index],
                     )
                     details += detail
-                    context = detail
-                }
-                texts.size == 10 -> {
-                    val parent = context
-                    if (parent == null) {
-                        diagnostics += ImportDiagnostic.warning(
-                            "DETAIL_ORPHAN_ROW",
-                            "调停补明细出现无主续行: ${texts.joinToString(" | ")}",
-                        )
-                    } else {
-                        details += parent.copy(
-                            original = timePlace(texts.subList(0, 5)),
-                            makeup = timePlace(texts.subList(5, 10)),
-                            isContinuation = true,
-                        )
-                    }
-                }
-                else -> diagnostics += ImportDiagnostic.warning(
+                } else diagnostics += ImportDiagnostic.warning(
                     "DETAIL_ROW_UNRECOGNIZED",
                     "调停补明细行有 ${texts.size} 列，无法识别: ${texts.joinToString(" | ")}",
                 )
             }
         }
-        }
         return details.distinct()
+    }
+
+    private fun expandedDetailRows(rows: List<Element>): List<List<Element?>> {
+        val pending = mutableMapOf<Int, Pair<Element, Int>>()
+        return rows.map { row ->
+            val cells = mutableMapOf<Int, Element>()
+            pending.toMap().forEach { (column, span) ->
+                cells[column] = span.first
+                if (span.second <= 1) pending.remove(column) else pending[column] = span.first to span.second - 1
+            }
+            var column = 0
+            for (cell in row.children().filter { it.tagName() in setOf("td", "th") }) {
+                while (column in cells) column++
+                val width = (cell.attr("colspan").toIntOrNull() ?: 1).coerceIn(1, 64)
+                val height = (cell.attr("rowspan").toIntOrNull() ?: 1).coerceIn(1, 200)
+                repeat(width) {
+                    cells[column] = cell
+                    if (height > 1) pending[column] = cell to height - 1
+                    column++
+                }
+            }
+            List((cells.keys.maxOrNull() ?: -1) + 1) { cells[it] }
+        }
     }
 
     private fun parseCourseProfiles(document: Document, timetableGrid: Element?): List<QnuCourseProfile> {
@@ -470,15 +496,22 @@ object QnuTimetableParser {
 
     private fun timePlace(texts: List<String?>): QnuTimePlace? {
         val (periodStart, periodEnd) = texts[3]?.let { text ->
-            periodRange.matchEntire(text)?.let { m ->
+            periodRange.matchEntire(profileHeader(text).removePrefix("第").removeSuffix("节").replace(Regex("[–—－~～至]"), "-"))?.let { m ->
                 val start = m.groupValues[1].toInt()
                 start to m.groupValues[2].ifEmpty { m.groupValues[1] }.toInt()
             }
         } ?: (null to null)
         val place = QnuTimePlace(
             dateText = texts[0],
-            week = texts[1]?.let { Regex("(?:第)?(\\d+)(?:周)?").matchEntire(it.trim())?.groupValues?.get(1)?.toIntOrNull() },
-            weekday = texts[2]?.let { weekdayNames[it] ?: weekdayNames[it.removePrefix("星期").removePrefix("周")] ?: it.toIntOrNull()?.takeIf { n -> n in 1..7 } },
+            // 调停课页面的周次字段与主课表不完全一致，可能是“第16周”、
+            // “第十六周”或直接写“16”。复用统一周次解析，避免明细因中文数字
+            // 无法映射而退化成普通叠加课次。
+            week = texts[1]?.let { weekText ->
+                val normalized = profileHeader(weekText)
+                WeekRuleText.parse(normalized)?.weeks?.singleOrNull()
+                    ?: normalized.toIntOrNull()
+            },
+            weekday = texts[2]?.let(::profileHeader)?.let { weekdayNames[it] ?: weekdayNames[it.removePrefix("星期").removePrefix("周")] ?: it.toIntOrNull()?.takeIf { n -> n in 1..7 } },
             periodStart = periodStart,
             periodEnd = periodEnd,
             room = texts[4],
@@ -505,19 +538,19 @@ object QnuTimetableParser {
     }
 
     /** 单元格按换行和常见块级元素切分为行并清理空白。 */
-    private fun cellLines(cell: Element): List<String> {
+    private fun cellLines(cell: Element, preserveEmpty: Boolean = false): List<String> {
         val lines = mutableListOf<StringBuilder>()
         var current = StringBuilder()
 
-        fun lineBreak() {
-            if (current.isNotEmpty()) lines += current
+        fun lineBreak(explicit: Boolean = false) {
+            if (current.isNotEmpty() || (explicit && preserveEmpty)) lines += current
             current = StringBuilder()
         }
 
         fun walk(node: Node) {
             when {
                 node is TextNode -> current.append(node.text())
-                node is Element && node.tagName() == "br" -> lineBreak()
+                node is Element && node.tagName() == "br" -> lineBreak(explicit = true)
                 node is Element && node.tagName() in setOf("div", "p", "li") -> {
                     lineBreak()
                     node.childNodes().forEach(::walk)
@@ -528,7 +561,7 @@ object QnuTimetableParser {
         }
         cell.childNodes().forEach(::walk)
         lineBreak()
-        return lines.mapNotNull { cleanText(it.toString()) }
+        return lines.mapNotNull { cleanText(it.toString()) ?: if (preserveEmpty) "" else null }
     }
 
     private fun cleanText(text: String): String? =

@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.Duration
 import cn.qztc.timetable.core.ui.theme.*
@@ -54,14 +56,21 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
     val context = LocalContext.current
     val colors = LocalQztcColors.current
     val store = remember(credentials?.username) { HomeworkStore(context, credentials?.username.orEmpty()) }
-    val snapshot = remember(store) { store.snapshot() }
-    var records by remember(store) { mutableStateOf(runCatching { snapshot?.let(HomeworkPayload::read).orEmpty() }.getOrDefault(emptyList())) }
-    var savedAt by remember(store) { mutableLongStateOf(snapshot?.optLong("savedAt") ?: 0L) }
+    var records by remember(store) { mutableStateOf(emptyList<HomeworkItem>()) }
+    var savedAt by remember(store) { mutableLongStateOf(0L) }
     var message by remember { mutableStateOf("") }
-    var courseNames by remember(store) { mutableStateOf(allCourseNames(records, snapshot)) }
+    var courseNames by remember(store) { mutableStateOf(emptyList<String>()) }
     var checkNetwork by remember { mutableStateOf(false) }
     var querying by remember { mutableStateOf(false) }
-    LaunchedEffect(credentials?.username) { if (credentials != null && autoRefresh) querying = true }
+    LaunchedEffect(store) {
+        val cached = withContext(Dispatchers.IO) {
+            val snapshot = store.snapshot()
+            val items = runCatching { snapshot?.let(HomeworkPayload::read).orEmpty() }.getOrDefault(emptyList())
+            Triple(items, snapshot?.optLong("savedAt") ?: 0L, allCourseNames(items, snapshot))
+        }
+        records = cached.first; savedAt = cached.second; courseNames = cached.third
+        if (credentials != null && autoRefresh) querying = true
+    }
     var revision by remember { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableStateOf("pending") }
     var selectedCourse by rememberSaveable { mutableStateOf("") }
@@ -104,7 +113,24 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
     BackHandler { if (detailId != null) detailId = null else onBack() }
     val detail = records.firstOrNull { it.id == detailId }
     val reminder = records.firstOrNull { it.id == reminderId }
-    val menuCourses = if (showDeleted) records.filter { it.id in hiddenIds }.map { it.courseName }.distinct() else courseNames
+    var listNow by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) { while (true) { delay(60_000); listNow = LocalDateTime.now() } }
+    val pendingCourses = remember(records, hiddenIds, listNow) {
+        records.filter { it.needsSubmission(listNow) && it.id !in hiddenIds }.map { it.courseName }.distinct()
+    }
+    val menuCourses = remember(showDeleted, records, hiddenIds, courseNames) {
+        if (showDeleted) records.filter { it.id in hiddenIds }.map { it.courseName }.distinct() else courseNames
+    }
+    val filtered = remember(records, hiddenIds, showDeleted, selectedCourse, filter, listNow) {
+        records.filter { (it.id in hiddenIds) == showDeleted && (selectedCourse.isBlank() || it.courseName == selectedCourse) &&
+            (showDeleted || filter == "all" || filter == "submitted" && it.status == "submitted" || filter == "pending" && it.needsSubmission(listNow)) }
+            .sortedWith(compareBy<HomeworkItem> { when {
+                it.archiveTerm.isNotBlank() -> 2
+                it.status != "submitted" && it.deadlineDate?.isBefore(listNow) != true -> 0
+                else -> 1
+            } }.thenByDescending { if (filter == "pending") LocalDateTime.MAX else it.deadlineDate }
+                .thenBy { if (filter == "pending") it.deadlineDate else null })
+    }
     LaunchedEffect(showDeleted, menuCourses) {
         if (selectedCourse.isNotBlank() && selectedCourse !in menuCourses) selectedCourse = ""
     }
@@ -148,7 +174,6 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
         } else {
             LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
-                    val pendingCourses = records.filter { it.needsSubmission() && it.id !in hiddenIds }.map { it.courseName }.distinct()
                     GlassSurface(GlassRole.CONTENT, Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Text("待提交作业", style = QztcTypography.section.copy(fontSize = QztcTypography.section.fontSize * 1.1f), color = colors.ink)
@@ -161,7 +186,7 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
                 }
                 item {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("pending" to "待提交", "submitted" to "已提交", "all" to "全部 / 往期").forEach { (id, label) ->
+                        listOf("pending" to "待提交", "submitted" to "已提交", "all" to "全部").forEach { (id, label) ->
                             FilterChip(selected = filter == id && !showDeleted, onClick = { filter = id; showDeleted = false }, label = { Text(label) })
                         }
                         FilterChip(selected = showDeleted, onClick = { showDeleted = true }, label = { Text("已移出 (${hiddenIds.size})") })
@@ -176,16 +201,7 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
                         }
                     }
                 }
-                val filtered = records.filter { (it.id in hiddenIds) == showDeleted && (selectedCourse.isBlank() || it.courseName == selectedCourse) &&
-                    (showDeleted || filter == "all" || filter == "submitted" && it.status == "submitted" || filter == "pending" && it.needsSubmission()) }
-                    .sortedWith(compareBy<HomeworkItem> { when {
-                        it.archiveTerm.isNotBlank() -> 2
-                        it.status != "submitted" && it.deadlineDate?.isBefore(java.time.LocalDateTime.now()) != true -> 0
-                        else -> 1
-                    } }
-                        .thenByDescending { if (filter == "pending") java.time.LocalDateTime.MAX else it.deadlineDate }
-                        .thenBy { if (filter == "pending") it.deadlineDate else null })
-                items(filtered, key = { it.id }) { item ->
+                items(filtered, key = { it.id }, contentType = { "homework-card" }) { item ->
                     GlassSurface(GlassRole.CONTENT, Modifier.fillMaxWidth().clickable { detailId = item.id }) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -194,7 +210,7 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
                             }
                             Text(item.title, style = QztcTypography.courseTitle, color = colors.ink)
                             if (item.archiveTerm.isNotBlank()) Text(item.archiveLabel.ifBlank { "归档记录" }, style = QztcTypography.meta, color = colors.mut)
-                            HomeworkTimedFacts(item, listOf("截止时间" to item.deadline, "提交状态" to item.label()) + if (item.grade.isNotBlank()) listOf("成绩" to item.grade) else emptyList())
+                            HomeworkTimedFacts(item, listOf("截止时间" to item.deadline, "提交状态" to item.label()) + if (item.grade.isNotBlank()) listOf("成绩" to item.grade) else emptyList(), compact = true)
                             if (!item.detailComplete) Text("详情待补充", style = QztcTypography.meta, color = colors.mut)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (showDeleted) TextButton(onClick = {
@@ -239,7 +255,7 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
         HomeworkAcquisition(credentials,
             onProgress = { payload ->
                 message = payload.optString("status", "正在查询…")
-                if (payload.has("rows")) runCatching { HomeworkPayload.read(payload) }.onSuccess { incoming ->
+                if (payload.has("rows")) runCatching { withContext(Dispatchers.Default) { HomeworkPayload.read(payload) } }.onSuccess { incoming ->
                     partialPayload = payload
                     val previous = records.associateBy { it.id }
                     records = (records + incoming.map { previous[it.id]?.refreshedBy(it) ?: it }).associateBy { it.id }.values.toList()
@@ -248,12 +264,12 @@ internal fun HomeworkScreen(credentials: QnuSavedCredentials?, onBack: () -> Uni
             },
             onComplete = { payload ->
                 runCatching {
-                    val incoming = HomeworkPayload.read(payload)
+                    val incoming = withContext(Dispatchers.Default) { HomeworkPayload.read(payload) }
                     require(incoming.isNotEmpty() || payload.optJSONArray("errors")?.length() == 0) { "没有完成任何课程读取" }
                     val failures = payload.optJSONArray("errors")
                     errors = (0 until (failures?.length() ?: 0)).map { failures!!.getString(it) }
-                    val merged = store.mergeAndSave(payload)
-                    records = HomeworkPayload.read(merged)
+                    val merged = withContext(Dispatchers.IO) { store.mergeAndSave(payload) }
+                    records = withContext(Dispatchers.Default) { HomeworkPayload.read(merged) }
                     savedAt = System.currentTimeMillis(); courseNames = allCourseNames(records, merged)
                     message = "已读取 ${incoming.size} 项作业" + if (errors.isEmpty()) "" else "，部分课程保留上次记录"
                 }.onFailure { message = "查询未完成，原有记录保留" }
@@ -297,13 +313,24 @@ internal fun homeworkRemaining(deadline: LocalDateTime?, now: LocalDateTime): St
 
 internal fun homeworkHasStudentReview(method: String) = method.contains("自评") || method.contains("互评")
 
-@Composable private fun HomeworkTimedFacts(item: HomeworkItem, rows: List<Pair<String, String>>) {
+@Composable private fun HomeworkTimedFacts(item: HomeworkItem, rows: List<Pair<String, String>>, compact: Boolean = false) {
     val pending = item.status in setOf("pending", "returned") && item.archiveTerm.isBlank()
     val now by produceState(LocalDateTime.now(), item.id, pending) {
         if (pending) while (true) { delay(60_000); value = LocalDateTime.now() }
     }
-    HomeworkFacts(rows.flatMap { row -> if (pending && row.first == "截止时间")
-        listOf(row, "剩余时间" to homeworkRemaining(item.deadlineDate, now)) else listOf(row) })
+    val facts = rows.flatMap { row -> if (pending && row.first == "截止时间")
+        listOf(row, "剩余时间" to homeworkRemaining(item.deadlineDate, now)) else listOf(row) }
+    if (!compact) HomeworkFacts(facts) else {
+        val colors = LocalQztcColors.current
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            facts.forEach { (label, value) ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(label, Modifier.width(64.dp), style = QztcTypography.meta, color = colors.mut)
+                    Text(value.ifBlank { "无" }, Modifier.weight(1f), style = QztcTypography.body, color = colors.ink)
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun HomeworkAction(label: String, modifier: Modifier, action: () -> Unit) {

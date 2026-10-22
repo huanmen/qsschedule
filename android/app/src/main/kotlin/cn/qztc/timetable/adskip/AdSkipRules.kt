@@ -346,6 +346,18 @@ data class AdSkipBounds(val left: Int, val top: Int, val right: Int, val bottom:
 }
 
 object AdSkipMatcher {
+    /** Preserve tree indices/ancestry while skipping stale off-display matches. */
+    fun findTarget(rule: AdSkipRule, nodes: List<AdSkipNode>, display: AdSkipBounds,
+        accepts: (Int) -> Boolean = { true }): Int? {
+        var eligible = nodes
+        repeat(nodes.size) {
+            val target = findTarget(rule, eligible) ?: return null
+            if (AdSkipSafety.onDisplay(nodes[target].bounds, display) && accepts(target)) return target
+            eligible = eligible.mapIndexed { index, node -> if (index == target) node.copy(visible = false) else node }
+        }
+        return null
+    }
+
     fun matchesActivity(rule: AdSkipRule, activity: String) = activity !in rule.excludedActivityNames &&
         (rule.activityNames.isEmpty() || activity in rule.activityNames ||
             (activity.isEmpty() && rule.allowUnknownActivity && rule.requiredSelectors.isNotEmpty()))
@@ -470,8 +482,8 @@ object AdSkipVerification {
 
 object AdSkipTiming {
     fun rapidSplash(packageName: String, activity: String, enteredAt: Long, now: Long): Boolean =
-        packageName == "com.yiban.app" &&
-            (activity.isEmpty() || activity == "com.yiban.app.activity.WelcomeActivity") &&
+        AdSkipRules.supportedPackage(packageName) &&
+            (packageName != "com.yiban.app" || activity.isEmpty() || activity == "com.yiban.app.activity.WelcomeActivity") &&
             now >= enteredAt && now - enteredAt < 8000
 
     fun fresh(eventTime: Long, now: Long): Boolean = eventTime > 0 && now >= eventTime && now - eventTime <= 2000

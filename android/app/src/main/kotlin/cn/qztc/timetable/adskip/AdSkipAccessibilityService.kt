@@ -40,6 +40,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
     private var activity = ""
     private var activityWindow = -1
     private var activityObservedAt = 0L
+    private val windowActivities = mutableMapOf<Int, Pair<String, Long>>()
     private var foregroundPackage = ""
     private var foregroundWindow = -1
     private var enteredAt = 0L
@@ -52,6 +53,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
     private var debugSampler: java.util.Timer? = null
     @Volatile private var mainHeartbeatAt = SystemClock.uptimeMillis()
     private var receivedEvents = 0L
+    private val contentEventQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var probeCount = 0L
     @Volatile private var lastProbeAt = 0L
     @Volatile private var lastRootStatus = "not-read"
@@ -104,7 +106,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
         }
         if (pending == null) {
             if (AdSkipTiming.rapidSplash(foregroundPackage, activity, enteredAt, SystemClock.uptimeMillis())) {
-                scheduleScan(50)
+                scheduleScan(100)
             } else if (scanStep < RETRIES.size) scheduleScan(RETRIES[scanStep++])
         }
     }
@@ -167,6 +169,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
             foregroundPackage = ""
             foregroundWindow = -1
             activity = ""
+            windowActivities.clear()
+            activityWindow = -1
+            activityObservedAt = 0L
             lastAction.clear()
             actionCounts.clear()
             lastDiagnostic.clear()
@@ -178,14 +183,21 @@ class AdSkipAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         receivedEvents++
-        if (event == null || !AdSkipStore.enabled(this) || !AccessibilitySession.availableTo("adskip") || event.eventType !in EVENT_TYPES) return
+        if (event == null || event.eventType !in EVENT_TYPES) return
         val pkg = event.packageName?.toString()
         val eventType = event.eventType
         val windowId = event.windowId
         val eventTime = event.eventTime
         val className = event.className?.toString().orEmpty()
         // Framework recycles events after return. Copy only metadata; never retain event/source.
-        handler.post { handleEvent(pkg, eventType, windowId, className, eventTime) }
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            // Feeds can emit hundreds of changes while a Binder tree query is busy.
+            // Coalesce these hints; scans always read the current root, never the event source.
+            if (contentEventQueued.compareAndSet(false, true)) handler.post {
+                contentEventQueued.set(false)
+                handleEvent(pkg, eventType, windowId, className, eventTime)
+            }
+        } else handler.post { handleEvent(pkg, eventType, windowId, className, eventTime) }
     }
 
     private fun handleEvent(pkg: String?, eventType: Int, windowId: Int, className: String, eventTime: Long) {
@@ -214,6 +226,10 @@ class AdSkipAccessibilityService : AccessibilityService() {
                 // Queue delivery time is not event time: an old queued home event must
                 // never become fresh post-click evidence merely because a scan was slow.
                 activityObservedAt = eventTime
+                if (windowId >= 0) {
+                    if (windowActivities.size >= 16) windowActivities.clear()
+                    windowActivities[windowId] = name to eventTime
+                }
             }
         }
         if (pending != null) return
@@ -230,7 +246,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
         if (!AdSkipStore.enabled(this) || !AccessibilitySession.availableTo("adskip") || pending != null || scanScheduled) return
         scanStep = 0
         burstStartedAt = SystemClock.uptimeMillis()
-        scheduleScan((80L - (burstStartedAt - lastScanAt)).coerceAtLeast(0))
+        scheduleScan((200L - (burstStartedAt - lastScanAt)).coerceAtLeast(0))
     }
 
     private fun scheduleScan(delay: Long) {
@@ -246,9 +262,12 @@ class AdSkipAccessibilityService : AccessibilityService() {
     private fun observeForeground(pkg: String, window: Int) {
         if (foregroundPackage != pkg || foregroundWindow != window) {
             actionCounts.clear()
-            activity = ""
-            activityWindow = -1
-            activityObservedAt = 0L
+            if (foregroundPackage != pkg) windowActivities.clear()
+            val observed = windowActivities[window]
+            activity = observed?.first.orEmpty()
+            activityWindow = if (observed == null) -1 else window
+            // Keep the original event time; restoring scope is not new success evidence.
+            activityObservedAt = observed?.second ?: 0L
             enteredAt = SystemClock.uptimeMillis()
             detectionRound.reset()
         }
@@ -258,6 +277,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
 
     private fun currentRoot(): AccessibilityNodeInfo? {
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked) return null
+        maybeClearAccessibilityCache()
         val activeRoot = runCatching { rootInActiveWindow }.getOrNull()
         val activePackage = activeRoot?.packageName?.toString()
         if (activeRoot != null && activePackage != null && !AdSkipStore.appEnabled(this, activePackage)) return activeRoot
@@ -340,7 +360,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
             if (rule.id == AdSkipGenericRules.ID || rule.targetId == null) continue
             val found = runCatching { directRuleTarget(root, rule) }.getOrNull() ?: continue
             found.use { tree ->
-                AdSkipMatcher.findTarget(rule, tree.nodes)?.let { target ->
+                AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds())?.let { target ->
                     detectionRound.presence(true, now)
                     if (tryBeginAttempt(rule, tree, target, now)) { recycle(root); return }
                 }
@@ -366,7 +386,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
             val found = runCatching { directTarget(root, generic) }.getOrNull()
             if (found != null) {
                 found.use { tree ->
-                    AdSkipMatcher.findTarget(generic, tree.nodes)?.let { target ->
+                    AdSkipMatcher.findTarget(generic, tree.nodes, displayBounds())?.let { target ->
                         detectionRound.presence(true, now)
                         if (tryBeginAttempt(generic, tree, target, now)) { recycle(root); return }
                     }
@@ -374,12 +394,13 @@ class AdSkipAccessibilityService : AccessibilityService() {
             }
         }
         // Structural popup rules need the complete sibling context in large feeds.
-        snapshot(root, budgetMs = if (pkg == "tv.danmaku.bili" || candidates.any { it.id != AdSkipGenericRules.ID }) 600 else 180).use { tree ->
+        snapshot(root, budgetMs = if (pkg == "tv.danmaku.bili") 1600 else if (candidates.any { it.id != AdSkipGenericRules.ID }) 600 else 180,
+            depthFirst = pkg == "tv.danmaku.bili").use { tree ->
             if (scanStep == 0) AdSkipTrace.tree(pkg, activity, tree.nodes, tree.complete, candidates.size, tree.elapsedMs)
             var observedTarget = false
             for (rule in candidates) {
                 if (activity.isEmpty() && rule.allowUnknownActivity && !tree.complete) continue
-                val target = AdSkipMatcher.findTarget(rule, tree.nodes)
+                val target = AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds())
                 if (target == null) { diagnostic(rule, if (tree.complete) AdSkipResult.NO_MATCH else AdSkipResult.INCOMPLETE_TREE); continue }
                 observedTarget = true
                 detectionRound.presence(true, now)
@@ -461,7 +482,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
                 for (node in matches.take(24)) {
                     if (node.windowId != root.windowId) continue
                     val tree = ancestorSnapshot(root, node)
-                    if (AdSkipMatcher.findTarget(rule, tree.nodes) == null) { tree.close(); continue }
+                    if (AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds()) == null) { tree.close(); continue }
                     selected = tree
                     AdSkipTrace.verification(rule, "lookup=text scanMs=${selected.elapsedMs}")
                     break
@@ -477,10 +498,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
         if (rule.packageName == "tv.danmaku.bili") {
             val pauseClose = root.findAccessibilityNodeInfosByText("关闭暂停页")
             try {
-                if (pauseClose.any { it.isVisibleToUser && it.contentDescription?.toString() == "关闭暂停页" }) {
-                    @Suppress("DEPRECATION")
-                    val tree = snapshot(AccessibilityNodeInfo.obtain(root), budgetMs = 600)
-                    if (tree.complete && AdSkipMatcher.findTarget(rule, tree.nodes) != null) return tree
+                for (close in pauseClose.filter { it.windowId == root.windowId && it.isVisibleToUser && it.contentDescription?.toString() == "关闭暂停页" }) {
+                    val tree = bilibiliPauseSnapshot(root, close) ?: continue
+                    if (AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds()) != null) return tree
                     tree.close()
                 }
             } finally { pauseClose.forEach(::recycle) }
@@ -495,24 +515,50 @@ class AdSkipAccessibilityService : AccessibilityService() {
                     // `tobid_interstitial_ad_detail`. An ancestor-only
                     // snapshot cannot prove that relationship, so use one
                     // bounded window snapshot for this explicit SDK id.
-                    if (id == "tobid_interstitial_skip_text") {
+                    if (id == "tobid_interstitial_skip_text" || id == "beizi_interstitial_ad_close_container_rl") {
                         // snapshot owns and recycles its root handle. Keep it
                         // separate from the caller-owned root, which is
                         // recycled below after directTarget returns.
                         @Suppress("DEPRECATION")
                         val windowRoot = AccessibilityNodeInfo.obtain(root)
                         snapshot(windowRoot, budgetMs = 600).let { tree ->
-                            if (AdSkipMatcher.findTarget(rule, tree.nodes) != null) return tree
+                            if (AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds()) != null) return tree
                             tree.close()
                         }
                     }
                     val tree = ancestorSnapshot(root, node)
-                    if (AdSkipMatcher.findTarget(rule, tree.nodes) != null) return tree
+                    if (AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds()) != null) return tree
                     tree.close()
                 }
             } finally { matches.forEach(::recycle) }
         }
         return textTarget(root, rule)
+    }
+
+    /** Read only the observed pause sheet, avoiding the expensive video/comment tree. */
+    private fun bilibiliPauseSnapshot(root: AccessibilityNodeInfo, close: AccessibilityNodeInfo): Snapshot? {
+        val display = displayBounds()
+        var parent = close.parent
+        try {
+            repeat(8) {
+                val current = parent ?: return null
+                val box = Rect().also(current::getBoundsInScreen)
+                if (current.childCount >= 3 && box.width() >= display.width * .8 &&
+                    box.height() in (display.height / 3)..(display.height * 4 / 5) &&
+                    box.top >= display.top + display.height / 5) {
+                    @Suppress("DEPRECATION")
+                    val sheet = snapshot(AccessibilityNodeInfo.obtain(current), budgetMs = 1200)
+                    @Suppress("DEPRECATION")
+                    val screen = AccessibilityNodeInfo.obtain(root)
+                    return Snapshot(listOf(describe(screen, null)) + sheet.nodes.map {
+                        it.copy(parent = it.parent?.plus(1) ?: 0)
+                    }, listOf(screen) + sheet.native, false, root.windowId, sheet.elapsedMs)
+                }
+                parent = current.parent
+                recycle(current)
+            }
+        } finally { parent?.let(::recycle) }
+        return null
     }
 
     /** Bounded native lookup for a rule with an explicit target resource ID. */
@@ -523,7 +569,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
             for (node in matches.take(8)) {
                 if (node.windowId != root.windowId || !node.isVisibleToUser || !node.isEnabled) continue
                 val tree = ancestorSnapshot(root, node)
-                if (AdSkipMatcher.findTarget(rule, tree.nodes) != null) return tree
+                if (AdSkipMatcher.findTarget(rule, tree.nodes, displayBounds()) != null) return tree
                 tree.close()
             }
         } finally { matches.forEach(::recycle) }
@@ -567,10 +613,16 @@ class AdSkipAccessibilityService : AccessibilityService() {
         // ACTION_CLICK may have changed the screen. Match again, never reuse old coordinates.
         val labelled = attempt.target.id != null || AdSkipRules.isSkipLabel(attempt.target.text) ||
             AdSkipRules.isSkipLabel(attempt.target.description)
-        val fresh = if (attempt.rule.id == AdSkipGenericRules.ID && labelled) directTarget(root, attempt.rule) else null
-        val tree = if (fresh != null) { recycle(root); fresh } else snapshot(root, budgetMs = 600)
+        val lookup = if (attempt.rule.id == AdSkipGenericRules.ID && labelled) directTarget(root, attempt.rule) else null
+        val fresh = lookup?.takeIf { it.nodes.any { node -> sameTarget(attempt.target, node) } }
+        if (lookup != null && fresh == null) lookup.close()
+        val tree = if (fresh != null) { recycle(root); fresh } else snapshot(root,
+            budgetMs = if (attempt.rule.packageName == "tv.danmaku.bili") 1600 else 600,
+            depthFirst = attempt.rule.packageName == "tv.danmaku.bili")
         val bounds = tree.use { tree ->
-            val targetIndex = AdSkipMatcher.findTarget(attempt.rule, tree.nodes) ?: return false
+            val targetIndex = AdSkipMatcher.findTarget(attempt.rule, tree.nodes, displayBounds()) { index ->
+                sameTarget(attempt.target, tree.nodes[index]) || relocatedAdClose(attempt, tree.nodes, index)
+            } ?: return false
             val target = tree.nodes[targetIndex]
             if (!AdSkipSafety.allowsTarget(tree.nodes, targetIndex)) return false
             if (!sameTarget(attempt.target, target) && !relocatedAdClose(attempt, tree.nodes, targetIndex)) return false
@@ -667,7 +719,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
                     finish(attempt, AdSkipResult.TARGET_GONE)
                 } else if (present) {
                     // A carousel can hide the X without dismissing its advertising item.
-                    val target = if (tree.complete) AdSkipMatcher.findTarget(attempt.rule, tree.nodes) else null
+                    val target = if (tree.complete) AdSkipMatcher.findTarget(attempt.rule, tree.nodes, displayBounds()) else null
                     if (target != null && sameTarget(attempt.target, tree.nodes[target]) &&
                         SystemClock.uptimeMillis() - attempt.lastGestureAt >= 150 && gesture(attempt)) return
                     if (++attempt.presentChecks >= 8) finish(attempt, AdSkipResult.TARGET_PRESENT)
@@ -739,7 +791,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
                 finish(attempt, AdSkipResult.UNCONFIRMED); return
             }
             val target = if (attempt.rule.id == AdSkipGenericRules.ID)
-                AdSkipMatcher.findTarget(attempt.rule, tree.nodes)?.takeIf { i ->
+                AdSkipMatcher.findTarget(attempt.rule, tree.nodes, displayBounds())?.takeIf { i ->
                     sameTarget(attempt.target, tree.nodes[i]) || relocatedAdClose(attempt, tree.nodes, i)
                 }
             else tree.nodes.indices.firstOrNull { tree.nodes[it].visible && sameControl(attempt.target, tree.nodes[it]) }
@@ -864,6 +916,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun cancelWork() {
+        contentEventQueued.set(false)
         val previous = pending
         pending = null
         handler.removeCallbacksAndMessages(null)
@@ -918,7 +971,7 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     /** Bounded tree traversal: an incomplete scan can match, but cannot prove absence. */
-    private fun snapshot(root: AccessibilityNodeInfo, budgetMs: Long = 180): Snapshot {
+    private fun snapshot(root: AccessibilityNodeInfo, budgetMs: Long = 180, depthFirst: Boolean = false): Snapshot {
         val native = mutableListOf<AccessibilityNodeInfo>()
         val nodes = mutableListOf<AdSkipNode>()
         data class Pending(val node: AccessibilityNodeInfo, val parent: Int?, val childIndex: Int?)
@@ -944,7 +997,12 @@ class AdSkipAccessibilityService : AccessibilityService() {
                     // be cancelled, but no additional child read is started afterwards.
                     if (SystemClock.uptimeMillis() - started > budgetMs) { complete = false; break@traversal }
                     val child = node.getChild(i)
-                    if (child != null) queue.add(Pending(child, index, i)) else complete = false
+                    if (child != null) {
+                        val entry = Pending(child, index, i)
+                        // Compose video pages can stall on the underlying player subtree.
+                        // Visit the last (overlay) branches first while retaining real indices.
+                        if (depthFirst) queue.addFirst(entry) else queue.addLast(entry)
+                    } else complete = false
                 }
             }
         } catch (_: RuntimeException) { complete = false }

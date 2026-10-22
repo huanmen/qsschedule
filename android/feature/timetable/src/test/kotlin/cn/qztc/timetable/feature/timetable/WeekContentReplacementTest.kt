@@ -37,6 +37,7 @@ class WeekContentReplacementTest {
         assertTrue(rendered.contains(anotherDay))
     }
 
+
     @Test fun ordinaryLiveConflictsRemainVisibleAndSourceDataIsUnchanged() {
         val ordinary = listOf(occurrence("first", 1, 2), occurrence("second", 1, 2))
         assertEquals(ordinary, replaceWeekCellContents(ordinary))

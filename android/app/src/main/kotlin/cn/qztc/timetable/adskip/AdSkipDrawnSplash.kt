@@ -145,6 +145,7 @@ internal object AdSkipDrawnSplash {
 
     fun findNativeTarget(rule: AdSkipRule, nodes: List<AdSkipNode>): Int? {
         if (rule.packageName != "com.zjwh.android_wh_physicalfitness") return null
+        findSportFloatingTarget(nodes)?.let { return it }
         if (rule.id == NATIVE_ID) findSportBannerTarget(nodes)?.let { return it }
         val screen = nodes.firstOrNull()?.bounds ?: return null
         fun own(i: Int) = nodes[i].visible && nodes[i].enabled && nodes[i].packageName == rule.packageName
@@ -189,6 +190,52 @@ internal object AdSkipDrawnSplash {
             return target
         }
         return null
+    }
+
+    /** Observed 2026-10-18 virtual floating ad; hash descriptions change each load. */
+    internal fun findSportFloatingTarget(nodes: List<AdSkipNode>): Int? {
+        val pkg = "com.zjwh.android_wh_physicalfitness"
+        val screen = nodes.firstOrNull()?.bounds ?: return null
+        fun own(i: Int) = nodes[i].visible && nodes[i].enabled && nodes[i].packageName == pkg
+        fun children(i: Int) = nodes.indices.filter { nodes[it].parent == i && own(it) }
+        fun type(i: Int, name: String) = nodes[i].className?.substringAfterLast('.') == name
+        fun under(i: Int, ancestor: Int): Boolean {
+            var current: Int? = i
+            repeat(nodes.size) {
+                if (current == ancestor) return true
+                current = current?.let(nodes::getOrNull)?.parent ?: return false
+            }
+            return false
+        }
+        val targets = mutableListOf<Int>()
+        for (panel in nodes.indices.filter { own(it) && type(it, "ViewGroup") && nodes[it].childCount == 2 }) {
+            val parts = children(panel)
+            if (parts.size != 2) continue
+            val creative = parts.singleOrNull { nodes[it].index == 0 } ?: continue
+            val caption = parts.singleOrNull { nodes[it].index == 1 } ?: continue
+            if (nodes.indices.none { own(it) && nodes[it].text == "关闭悬浮球可继续浏览应用" && under(it, caption) }) continue
+            if (nodes.indices.none { own(it) && under(it, creative) && nodes[it].text == "点击到落地页或三方APP" }) continue
+            if (nodes.indices.none { own(it) && nodes[it].description == "virtualNode" && under(panel, it) }) continue
+            val branches = children(creative)
+            if (branches.size != 2 || nodes[creative].childCount != 2) continue
+            val closeBranch = branches.singleOrNull { nodes[it].index == 1 } ?: continue
+            val wrapper = children(closeBranch).singleOrNull() ?: continue
+            val inner = children(wrapper).singleOrNull() ?: continue
+            val target = children(inner).singleOrNull() ?: continue
+            if (!type(closeBranch, "ViewGroup") || !type(wrapper, "ViewGroup") || !type(inner, "ViewGroup")) continue
+            val button = nodes[target]
+            val box = button.bounds ?: continue
+            val adBox = nodes[creative].bounds ?: continue
+            if (!type(target, "ImageView") || button.childCount != 0 || !button.id.isNullOrBlank() ||
+                !button.text.isNullOrBlank() || !box.containedBy(adBox) || !adBox.containedBy(screen) ||
+                adBox.width < screen.width * .4 || adBox.height !in (screen.height * .05).toInt()..(screen.height * .25).toInt() ||
+                box.width !in (screen.width * .02).toInt()..(screen.width * .08).toInt() ||
+                box.height !in (screen.height * .01).toInt()..(screen.height * .05).toInt() ||
+                box.width.toDouble() / box.height !in .6..1.4 || box.left < adBox.left + adBox.width * .85 ||
+                children(nodes[target].parent ?: continue).size != 1) continue
+            targets += target
+        }
+        return targets.singleOrNull()
     }
 
     fun sportBannerPresent(nodes: List<AdSkipNode>): Boolean = nodes.indices.any { container ->

@@ -27,6 +27,7 @@ internal fun homeworkReminderTimes(options: HomeworkReminderOptions, item: Homew
 
 /** Choices are separate from refreshed school data; deleted rows cannot reappear on refresh. */
 internal class HomeworkChoices(context: Context, val account: String) {
+    private val defaults = HomeworkReminderSettingsStore(context)
     private val prefs = context.getSharedPreferences("homework-choices", Context.MODE_PRIVATE)
     fun hidden(): Set<String> = prefs.getStringSet("$account:hidden", emptySet()).orEmpty().toSet()
     fun hide(id: String, hidden: Boolean) {
@@ -34,7 +35,9 @@ internal class HomeworkChoices(context: Context, val account: String) {
         prefs.edit().putStringSet("$account:hidden", ids).apply()
     }
     fun options(id: String): HomeworkReminderOptions = runCatching {
-        val root = JSONObject(prefs.getString("$account:reminder:$id", "{}").orEmpty())
+        val saved = prefs.getString("$account:reminder:$id", null)
+        if (saved == null) return HomeworkReminderOptions(daily = defaults.load().daily, beforeMinutes = defaults.load().beforeMinutes)
+        val root = JSONObject(saved)
         HomeworkReminderOptions(root.optBoolean("enabled", true), root.optString("once").takeIf(String::isNotBlank)?.let(LocalDateTime::parse),
             root.optString("daily").takeIf(String::isNotBlank)?.let(LocalTime::parse),
             if (root.has("before")) root.optInt("before").takeIf { it in 1..525600 } else 60)
@@ -63,12 +66,13 @@ internal object HomeworkReminderScheduler {
         val root = runCatching { JSONObject(context.getSharedPreferences("homework-results", 0).getString(account, "{}").orEmpty()) }.getOrNull()
         val records = runCatching { root?.let(HomeworkPayload::read).orEmpty() }.getOrDefault(emptyList())
         val choices = HomeworkChoices(context, account)
+        val defaults = HomeworkReminderSettingsStore(context).load()
         val hidden = choices.hidden()
-        records.filter { it.id in hidden || !it.needsSubmission() || !choices.options(it.id).enabled }.forEach {
+        records.filter { !defaults.enabled || it.id in hidden || !it.needsSubmission() || !choices.options(it.id).enabled }.forEach {
             context.getSystemService(android.app.NotificationManager::class.java).cancel(notificationId(account, it.id))
         }
         val times = linkedMapOf<String, Long>()
-        records.filterNot { it.id in hidden }.forEach { item ->
+        records.filter { defaults.enabled && it.id !in hidden }.forEach { item ->
             homeworkReminderTimes(choices.options(item.id), item, LocalDateTime.now()).forEach { (_, time) ->
                 // Coalesce simultaneous rules into a single notification.
                 val key = "$account|${item.id}|$time"
@@ -93,9 +97,10 @@ internal object HomeworkReminderScheduler {
         val choices = HomeworkChoices(context, account)
         val root = runCatching { JSONObject(context.getSharedPreferences("homework-results", 0).getString(account, "{}").orEmpty()) }.getOrNull()
         val item = runCatching { root?.let(HomeworkPayload::read)?.firstOrNull { it.id == id } }.getOrNull()
-        if (item != null && id !in choices.hidden() && choices.options(id).enabled && item.needsSubmission()) {
+        val defaults = HomeworkReminderSettingsStore(context).load()
+        if (defaults.enabled && item != null && id !in choices.hidden() && choices.options(id).enabled && item.needsSubmission()) {
             if (cn.qztc.timetable.notifications.QztcNotifications.notifyHomeworkReminder(context,
-                    "待提交：${item.title}", "${item.courseName}\n截止 ${item.deadline.ifBlank { "未公布" }}", notificationId(account, id)))
+                    "待提交：${item.title}", "${item.courseName}\n截止 ${item.deadline.ifBlank { "未公布" }}", notificationId(account, id), defaults.displayMode))
                 prefs.edit().putString("sent:$account:$id", date).apply()
         }
         reschedule(context)

@@ -26,8 +26,11 @@ object UpcomingScheduleChanges {
         fun upcoming(e: ScheduleException) = e.type in setOf(ExceptionType.CANCEL,ExceptionType.MOVE) && (relevant(e.original)||relevant(e.replacement))
         val updates=incoming.exceptions.filter { if (includeExpired) it.type in setOf(ExceptionType.CANCEL, ExceptionType.MOVE) else upcoming(it) }.mapNotNull { exception ->
             val course=incoming.courses.firstOrNull { it.id==exception.courseId } ?: return@mapNotNull null
+            fun sequence(value: String?) = value?.trim()?.let { it.toIntOrNull()?.toString() ?: it }
+            fun name(value: String) = value.replace(Regex("[\\s\\u00a0　]"), "").replace('（', '(').replace('）', ')')
             val matches=current.courses.filter { it.sourceType==SourceType.QNU_EDU &&
-                ((course.code!=null && it.code==course.code && it.sequence==course.sequence) || (it.name==course.name && it.sequence==course.sequence)) }
+                sequence(it.sequence)==sequence(course.sequence) &&
+                ((course.code!=null && it.code==course.code) || (name(it.name)==name(course.name) && (it.code==null || course.code==null))) }
             val target=matches.singleOrNull() ?: return@mapNotNull null
             val anchor=exception.original ?: exception.replacement ?: return@mapNotNull null
             exception.copy(courseId=target.id,id=ScheduleException.stableId(exception.type,target.id,anchor),

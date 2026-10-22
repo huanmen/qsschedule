@@ -4,6 +4,35 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdSkipGenericRulesTest {
+    @Test fun volunteerBeiZiRequiresExactSdkCloseAndSupportingControls() {
+        val pkg = "com.zzw.october"
+        val rule = AdSkipGenericRules.rule(pkg)
+        val screen = AdSkipNode(null,null,true,true,false,bounds=AdSkipBounds(0,0,1280,2772),packageName=pkg)
+        fun control(id: String, bounds: AdSkipBounds, text: String? = null, clickable: Boolean = false) =
+            screen.copy(id="$pkg:id/$id",parent=0,bounds=bounds,text=text,clickable=clickable)
+        val close=control("beizi_interstitial_ad_close_container_rl",AdSkipBounds(952,532,1040,620),clickable=true)
+        val complaint=control("beizi_interstitial_ad_complain_tv",AdSkipBounds(266,558,425,620),"投诉",true)
+        val title=control("beizi_interstitial_ad_title_tv",AdSkipBounds(240,2063,1040,2129))
+        val nodes=listOf(screen,close,complaint,title)
+        assertEquals(1,AdSkipMatcher.findTarget(rule,nodes))
+        assertNull(AdSkipMatcher.findTarget(rule,nodes.dropLast(1)))
+        assertNull(AdSkipMatcher.findTarget(rule,listOf(screen,close,title)))
+        assertNull(AdSkipMatcher.findTarget(rule,listOf(screen,close.copy(id="$pkg:id/close"),complaint,title)))
+        assertNull(AdSkipMatcher.findTarget(rule,listOf(screen,close.copy(visible=false),complaint,title)))
+        assertNull(AdSkipMatcher.findTarget(rule,listOf(screen,close.copy(bounds=AdSkipBounds(0,0,1280,2772)),complaint,title)))
+        assertNull(AdSkipMatcher.findTarget(AdSkipGenericRules.rule("com.example.app"),nodes))
+    }
+
+    @Test fun xiaocanFooterSkipRequiresObservedSplashLogoParent() {
+        val pkg = "com.realtech.xiaocan"
+        val rule = AdSkipGenericRules.rule(pkg)
+        val screen = AdSkipNode(null, null, true, true, false, bounds=AdSkipBounds(0,0,1280,2772), packageName=pkg)
+        val logo = screen.copy(id="$pkg:id/splash_logo_container", parent=0, bounds=AdSkipBounds(0,2433,1280,2720))
+        val skip = screen.copy(id="$pkg:id/tv_skip", text="跳过", parent=1, clickable=true, bounds=AdSkipBounds(1075,2460,1239,2549))
+        assertEquals(2, AdSkipMatcher.findTarget(rule, listOf(screen,logo,skip)))
+        assertNull(AdSkipMatcher.findTarget(rule, listOf(screen,logo.copy(id="$pkg:id/content"),skip)))
+    }
+
     private val pkg = "example.shopping"
     private val rule = AdSkipGenericRules.rule(pkg)
     private val root = AdSkipNode(null, null, true, true, false, bounds = AdSkipBounds(0, 0, 1080, 2400), packageName = pkg)

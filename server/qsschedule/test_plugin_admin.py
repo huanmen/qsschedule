@@ -38,6 +38,13 @@ class PluginAdminTest(unittest.TestCase):
     def draft(self, id='school.rules'):
         return dict(id=id,name='校园规则',summary='本地整理',kind='adskip-rule-pack',version=1,minAppVersion=13,minAdapterVersion=1,rulesUrl='https://example.org/rules.json',package=None,notes='初版')
 
+    def test_download_dashboard_is_local_only(self):
+        status, value = self.request('/api/download-stats?days=7')
+        self.assertEqual(status, 200)
+        self.assertEqual(len(value['daily']), 7)
+        self.assertEqual(self.request('/api/download-stats?days=8')[0], 400)
+        self.assertEqual(self.request('/api/download-stats', headers={'Host':'evil.example'})[0], 403)
+
     def row(self, id):
         return next(p for p in store.records(self.root) if p['id']==id)
 

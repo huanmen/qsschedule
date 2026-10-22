@@ -67,8 +67,8 @@ object QnuTimetableImporter {
 
         for (entry in page.gridEntries) {
             val hasScopedCancellation = page.changeDetails.any { detail ->
-                detail.typeText.contains(STATUS_CANCEL) && detail.original?.week != null &&
-                    detail.courseName == entry.courseName && (detail.sequence == null || detail.sequence == entry.sequence)
+                (detail.typeText.contains(STATUS_CANCEL) || detail.typeText.contains("调课")) && detail.original?.week != null &&
+                    registry.courseIdForDetail(detail) == registry.courseId(entry.courseName, entry.sequence)
             }
             mapGridEntry(entry, registry, meetings, exceptions, diagnostics, hasScopedCancellation)
         }
@@ -349,12 +349,19 @@ object QnuTimetableImporter {
 
         private val courses = linkedMapOf<String, Course>()
 
-        fun courseId(name: String, sequence: String?): String {
+        fun courseId(name: String, sequence: String?, preferredCode: String? = null): String {
             val key = Key(name, sequence)
             val profile = QnuTimetableParser.matchCourseProfile(name, sequence, page.courseProfiles)
-            val code = codeByKey[key] ?: profile?.courseCode
+            // 调停课明细的课程名可能被截断或与主课表略有差异，但课程号是
+            // 教务系统内稳定的主键。优先使用明细课程号，确保原课与调入课
+            // 绑定到同一个 Course，从而能正确执行替换而不是叠加。
+            val code = preferredCode?.trim()?.takeIf { it.isNotEmpty() }
+                ?: codeByKey[key] ?: profile?.courseCode
             val semesterPrefix = semesterId.takeIf(String::isNotBlank)?.let { "$it:" }.orEmpty()
-            val id = "qnu:$semesterPrefix${code ?: name}#${sequence ?: "-"}"
+            val normalizedSequence = sequence?.split('-')?.joinToString("-") {
+                it.trim().trimStart('0').ifEmpty { "0" }
+            }
+            val id = "qnu:$semesterPrefix${code ?: name}#${normalizedSequence ?: "-"}"
             val course = courses.getOrPut(id) {
                 Course(
                     id = id,
@@ -376,7 +383,7 @@ object QnuTimetableImporter {
         }
 
         fun courseIdForDetail(detail: QnuChangeDetail): String =
-            courseId(detail.courseName ?: detail.courseCode ?: "未知课程", detail.sequence)
+            courseId(detail.courseName ?: detail.courseCode ?: "未知课程", detail.sequence, detail.courseCode)
 
         fun referencedCourses(): List<Course> = courses.values.toList()
     }

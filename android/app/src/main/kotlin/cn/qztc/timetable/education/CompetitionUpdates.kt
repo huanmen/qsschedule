@@ -19,6 +19,13 @@ import java.util.concurrent.TimeUnit
 
 internal object CompetitionUpdates {
     private const val WORK = "followed-competition-updates"
+    fun pending(context: Context): Set<String> = context.getSharedPreferences(WORK, 0).getStringSet("pending", emptySet()).orEmpty().toSet()
+    @Synchronized fun addPending(context: Context, names: Set<String>) {
+        context.getSharedPreferences(WORK, 0).edit().putStringSet("pending", pending(context) + names).apply()
+    }
+    @Synchronized fun consume(context: Context, names: Set<String>) {
+        context.getSharedPreferences(WORK, 0).edit().putStringSet("pending", pending(context) - names).apply()
+    }
     fun follow(context: Context, names: JSONArray) {
         context.getSharedPreferences(WORK, Context.MODE_PRIVATE).edit().putString("names", names.toString()).apply()
         val manager = WorkManager.getInstance(context)
@@ -69,18 +76,7 @@ class CompetitionUpdateWorker(context: Context, parameters: WorkerParameters) : 
                 if (previous.has(id) && previous.getString(id) != stages) changed.add(name)
             }
             if (changed.isNotEmpty()) {
-                val notifications = NotificationManagerCompat.from(applicationContext)
-                if (notifications.areNotificationsEnabled()) {
-                    applicationContext.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                        NotificationChannel("competition-updates", "关注赛事更新", NotificationManager.IMPORTANCE_HIGH))
-                    val intent = PendingIntent.getActivity(applicationContext, 1301, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-                    val notification = NotificationCompat.Builder(applicationContext, "competition-updates")
-                        .setSmallIcon(R.drawable.ic_notification).setContentTitle("关注赛事有新安排")
-                        .setContentText(changed.joinToString("、") + "：时间或地点资料已更新")
-                        .setStyle(NotificationCompat.BigTextStyle().bigText(changed.joinToString("、") + "：时间或地点资料已更新"))
-                        .setContentIntent(intent).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
-                    notifications.notify(1301, notification)
-                }
+                CompetitionUpdates.addPending(applicationContext, changed.toSet())
             }
             for (id in previous.keys()) if (!latest.has(id)) latest.put(id, previous.get(id))
             prefs.edit().putString("stages", latest.toString()).apply()

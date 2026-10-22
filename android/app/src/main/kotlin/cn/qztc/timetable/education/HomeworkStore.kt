@@ -27,16 +27,17 @@ internal data class HomeworkItem(
         submissionContent = incoming.submissionContent.ifBlank { submissionContent }, feedback = incoming.feedback.ifBlank { feedback },
         detailComplete = detailComplete,
     )
-    val deadlineDate: LocalDateTime? get() = runCatching {
+    val deadlineDate: LocalDateTime? = runCatching {
         LocalDateTime.parse(deadline.replace(' ', 'T').take(19), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
     }.getOrNull()
+    private val startDate = runCatching { LocalDateTime.parse(startAt.replace(' ', 'T').take(19)) }.getOrNull()
     fun label(now: LocalDateTime = LocalDateTime.now()): String = when {
         status == "submitted" -> "已提交"
         status == "returned" -> "已退回 · 请修订"
         status == "unknown" -> "状态待确认"
         archiveTerm.isNotBlank() -> "未参与 · 归档"
         deadlineDate?.isBefore(now) == true -> "已截止 · 未提交"
-        runCatching { LocalDateTime.parse(startAt.replace(' ', 'T').take(19)) }.getOrNull()?.isAfter(now) == true -> "未开始"
+        startDate?.isAfter(now) == true -> "未开始"
         else -> "待提交"
     }
 }
